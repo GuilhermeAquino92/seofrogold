@@ -1,0 +1,3 @@
+[console_scripts]
+seofrog = seofrog.main:cli_entry_point
+seofrog-analyze = seofrog.analyzers.seo_analyzer:analyze_cli

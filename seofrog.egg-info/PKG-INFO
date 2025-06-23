@@ -1,0 +1,129 @@
+Metadata-Version: 2.4
+Name: seofrog
+Version: 0.2.0
+Summary: Professional Screaming Frog Clone - Enterprise SEO Crawler
+Home-page: https://github.com/seofrog/seofrog
+Author: SEOFrog Team
+Author-email: dev@seofrog.com
+Maintainer: SEOFrog Team
+Maintainer-email: dev@seofrog.com
+License: MIT
+Project-URL: Homepage, https://seofrog.com
+Project-URL: Documentation, https://docs.seofrog.com
+Project-URL: Repository, https://github.com/seofrog/seofrog
+Project-URL: Issues, https://github.com/seofrog/seofrog/issues
+Project-URL: Changelog, https://github.com/seofrog/seofrog/blob/main/CHANGELOG.md
+Keywords: seo,crawler,scraping,web-scraping,screaming-frog,seo-tools,website-analysis,web-crawler,seo-audit,link-analysis,meta-tags,technical-seo,site-audit
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: Intended Audience :: System Administrators
+Classifier: Intended Audience :: Other Audience
+Classifier: Topic :: Internet :: WWW/HTTP :: Indexing/Search
+Classifier: Topic :: Internet :: WWW/HTTP :: Site Management
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Monitoring
+Classifier: Topic :: Utilities
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Operating System :: OS Independent
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: MacOS
+Classifier: Environment :: Console
+Classifier: Environment :: Web Environment
+Classifier: Natural Language :: English
+Classifier: Natural Language :: Portuguese (Brazilian)
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: requests>=2.31.0
+Requires-Dist: beautifulsoup4>=4.12.0
+Requires-Dist: lxml>=4.9.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: urllib3>=2.0.0
+Requires-Dist: click>=8.1.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: colorama>=0.4.6
+Requires-Dist: tqdm>=4.65.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: validators>=0.20.0
+Provides-Extra: full
+Requires-Dist: requests>=2.31.0; extra == "full"
+Requires-Dist: beautifulsoup4>=4.12.0; extra == "full"
+Requires-Dist: lxml>=4.9.0; extra == "full"
+Requires-Dist: pandas>=2.0.0; extra == "full"
+Requires-Dist: urllib3>=2.0.0; extra == "full"
+Requires-Dist: click>=8.1.0; extra == "full"
+Requires-Dist: rich>=13.0.0; extra == "full"
+Requires-Dist: colorama>=0.4.6; extra == "full"
+Requires-Dist: tqdm>=4.65.0; extra == "full"
+Requires-Dist: pydantic>=2.0.0; extra == "full"
+Requires-Dist: validators>=0.20.0; extra == "full"
+Requires-Dist: openpyxl>=3.1.0; extra == "full"
+Requires-Dist: xlsxwriter>=3.1.0; extra == "full"
+Requires-Dist: psutil>=5.9.0; extra == "full"
+Requires-Dist: aiohttp>=3.8.0; extra == "full"
+Provides-Extra: export
+Requires-Dist: openpyxl>=3.1.0; extra == "export"
+Requires-Dist: xlsxwriter>=3.1.0; extra == "export"
+Provides-Extra: performance
+Requires-Dist: psutil>=5.9.0; extra == "performance"
+Requires-Dist: aiohttp>=3.8.0; extra == "performance"
+Provides-Extra: advanced
+Requires-Dist: selenium>=4.15.0; extra == "advanced"
+Requires-Dist: playwright>=1.40.0; extra == "advanced"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: flake8>=6.0.0; extra == "dev"
+Requires-Dist: mypy>=1.5.0; extra == "dev"
+Requires-Dist: pre-commit>=3.4.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: requests>=2.31.0; extra == "all"
+Requires-Dist: beautifulsoup4>=4.12.0; extra == "all"
+Requires-Dist: lxml>=4.9.0; extra == "all"
+Requires-Dist: pandas>=2.0.0; extra == "all"
+Requires-Dist: urllib3>=2.0.0; extra == "all"
+Requires-Dist: click>=8.1.0; extra == "all"
+Requires-Dist: rich>=13.0.0; extra == "all"
+Requires-Dist: colorama>=0.4.6; extra == "all"
+Requires-Dist: tqdm>=4.65.0; extra == "all"
+Requires-Dist: pydantic>=2.0.0; extra == "all"
+Requires-Dist: validators>=0.20.0; extra == "all"
+Requires-Dist: openpyxl>=3.1.0; extra == "all"
+Requires-Dist: xlsxwriter>=3.1.0; extra == "all"
+Requires-Dist: psutil>=5.9.0; extra == "all"
+Requires-Dist: aiohttp>=3.8.0; extra == "all"
+Requires-Dist: selenium>=4.15.0; extra == "all"
+Requires-Dist: playwright>=1.40.0; extra == "all"
+Requires-Dist: pytest>=7.4.0; extra == "all"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "all"
+Requires-Dist: pytest-cov>=4.1.0; extra == "all"
+Requires-Dist: black>=23.0.0; extra == "all"
+Requires-Dist: flake8>=6.0.0; extra == "all"
+Requires-Dist: mypy>=1.5.0; extra == "all"
+Requires-Dist: pre-commit>=3.4.0; extra == "all"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: maintainer
+Dynamic: maintainer-email
+Dynamic: project-url
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+SEOFrog Enterprise - Professional Screaming Frog Clone

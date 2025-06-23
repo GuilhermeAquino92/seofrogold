@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.env
+*.venv
+.env
+.venv
+.env.*
+
+# IDEs e editores
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Ambientes virtuais
+venv/
+env/
+ENV/
+.venv/
+
+# Arquivos temporários
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# Arquivos de exportação
+*.xlsx
+*.xls
+*.csv
+/export/*
+/exports/*
+*.html
+
+# Cache de testes
+.cache/
+pytest_cache/
+.tox/
+
+# Jupyter (se usar)
+.ipynb_checkpoints
+
+# MacOS
+.DS_Store
+
+# Sistema
+desktop.ini
