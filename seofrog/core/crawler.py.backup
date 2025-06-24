@@ -18,7 +18,6 @@ from datetime import datetime
 import signal
 import psutil
 import os
-import chardet  # 🆕 Adicionado para detecção de encoding
 
 from .config import CrawlConfig
 
@@ -263,7 +262,7 @@ class RobotsHandler:
             return True
 
 class SitemapHandler:
-    """Handler enterprise para sitemap.xml - VERSÃO CORRIGIDA"""
+    """Handler enterprise para sitemap.xml"""
     
     def __init__(self, domain: str, http_engine: HTTPEngine):
         self.domain = domain
@@ -290,9 +289,7 @@ class SitemapHandler:
         return valid_sitemaps
     
     def parse_sitemap(self, sitemap_url: str) -> List[str]:
-        """
-        🔧 MÉTODO CORRIGIDO - Parseia sitemap com tratamento robusto para XML malformado
-        """
+        """Parseia sitemap e extrai URLs"""
         urls = []
         
         try:
@@ -300,181 +297,33 @@ class SitemapHandler:
             if not response or response.status_code != 200:
                 return urls
             
-            # === CORREÇÃO PARA XML MALFORMADO ===
+            # Parse XML
+            root = ET.fromstring(response.content)
             
-            # 1. Detecta encoding corretamente
-            content = response.content
+            # Remove namespace para facilitar parsing
+            for elem in root.iter():
+                if '}' in str(elem.tag):
+                    elem.tag = elem.tag.split('}')[1]
             
-            # Detecta encoding via XML declaration ou chardet
-            encoding = 'utf-8'  # default
-            xml_declaration_match = re.search(rb'<\?xml[^>]+encoding=["\']([^"\']+)["\']', content[:200])
-            if xml_declaration_match:
-                declared_encoding = xml_declaration_match.group(1).decode('ascii', errors='ignore')
-                if declared_encoding:
-                    encoding = declared_encoding
-                    self.logger.debug(f"Encoding detectado via XML declaration: {encoding}")
-            else:
-                # Usa chardet como fallback
-                try:
-                    detected = chardet.detect(content[:5000])
-                    if detected and detected.get('confidence', 0) > 0.7:
-                        encoding = detected['encoding']
-                        self.logger.debug(f"Encoding detectado via chardet: {encoding} (conf: {detected.get('confidence', 0):.2f})")
-                except Exception as e:
-                    self.logger.debug(f"Erro no chardet: {e}")
-                    pass
+            # Extrai URLs do sitemap
+            for url_elem in root.findall('.//url'):
+                loc_elem = url_elem.find('loc')
+                if loc_elem is not None and loc_elem.text:
+                    urls.append(loc_elem.text.strip())
             
-            # 2. Decodifica com tratamento de erro
-            try:
-                content_str = content.decode(encoding)
-            except (UnicodeDecodeError, LookupError):
-                content_str = content.decode('utf-8', errors='replace')
-                self.logger.debug(f"Fallback para UTF-8 com errors='replace' no sitemap {sitemap_url}")
+            # Se é sitemap index, processa sub-sitemaps
+            for sitemap_elem in root.findall('.//sitemap'):
+                loc_elem = sitemap_elem.find('loc')
+                if loc_elem is not None and loc_elem.text:
+                    sub_urls = self.parse_sitemap(loc_elem.text.strip())
+                    urls.extend(sub_urls)
             
-            # 3. Remove caracteres inválidos para XML
-            invalid_chars_pattern = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]')
-            original_length = len(content_str)
-            content_str = invalid_chars_pattern.sub('', content_str)
-            
-            if len(content_str) != original_length:
-                chars_removed = original_length - len(content_str)
-                self.logger.debug(f"Removidos {chars_removed} caracteres inválidos do XML")
-            
-            # 4. Remove BOMs se presentes
-            content_str = content_str.lstrip('\ufeff\ufffe\u0000')
-            
-            # 5. Tenta parsing com múltiplas estratégias
-            root = None
-            parsing_method = None
-            
-            # Estratégia 1: Parsing direto
-            try:
-                root = ET.fromstring(content_str)
-                parsing_method = "direct"
-            except ET.ParseError as e:
-                self.logger.debug(f"Parsing direto falhou: {e}")
-            
-            # Estratégia 2: Remove namespaces problemáticos
-            if root is None:
-                try:
-                    cleaned_content = re.sub(r'xmlns[^=]*="[^"]*"', '', content_str)
-                    cleaned_content = re.sub(r'xmlns[^=]*=\'[^\']*\'', '', cleaned_content)
-                    cleaned_content = re.sub(r'<(/?)[\w]*:', r'<\1', cleaned_content)
-                    root = ET.fromstring(cleaned_content)
-                    parsing_method = "namespace_cleanup"
-                except ET.ParseError as e:
-                    self.logger.debug(f"Parsing com limpeza de namespace falhou: {e}")
-            
-            # Estratégia 3: Correções manuais para problemas comuns
-            if root is None:
-                try:
-                    # Corrige & não escapados
-                    fixed_content = re.sub(r'&(?![a-zA-Z]+;)', r'&amp;', content_str)
-                    # Corrige < e > em atributos
-                    fixed_content = re.sub(r'<([^>]*?)&([^>]*?)>', r'<\1&amp;\2>', fixed_content)
-                    root = ET.fromstring(fixed_content)
-                    parsing_method = "manual_fixes"
-                except ET.ParseError as e:
-                    self.logger.debug(f"Parsing com correções manuais falhou: {e}")
-            
-            # Estratégia 4: Extração por regex (fallback)
-            if root is None:
-                try:
-                    self.logger.warning(f"XML malformado em {sitemap_url}, usando extração por regex")
-                    
-                    # Extrai URLs usando regex
-                    url_pattern = r'<loc[^>]*>(https?://[^<]+)</loc>'
-                    sitemap_pattern = r'<sitemap[^>]*>.*?<loc[^>]*>(https?://[^<]+)</loc>.*?</sitemap>'
-                    
-                    extracted_urls = re.findall(url_pattern, content_str, re.DOTALL | re.IGNORECASE)
-                    extracted_sitemaps = re.findall(sitemap_pattern, content_str, re.DOTALL | re.IGNORECASE)
-                    
-                    # Adiciona URLs encontradas
-                    for url in extracted_urls:
-                        clean_url = url.strip()
-                        if self._is_valid_url(clean_url):
-                            urls.append(clean_url)
-                    
-                    # Processa sub-sitemaps recursivamente
-                    for sub_sitemap_url in extracted_sitemaps[:5]:  # Máximo 5
-                        try:
-                            clean_sub_url = sub_sitemap_url.strip()
-                            if self._is_valid_url(clean_sub_url):
-                                sub_urls = self.parse_sitemap(clean_sub_url)
-                                urls.extend(sub_urls)
-                        except Exception as e:
-                            self.logger.warning(f"Erro em sub-sitemap {sub_sitemap_url}: {e}")
-                    
-                    parsing_method = "regex_extraction"
-                    
-                    # Remove duplicatas e retorna
-                    urls = list(dict.fromkeys(urls))  # Remove duplicatas preservando ordem
-                    self.logger.info(f"Extraídas {len(urls)} URLs do sitemap {sitemap_url} (método: {parsing_method})")
-                    return urls
-                    
-                except Exception as e:
-                    self.logger.error(f"Todas as estratégias de parsing falharam para {sitemap_url}: {e}")
-                    return urls
-            
-            # 6. Se conseguiu fazer parsing do XML, extrai URLs normalmente
-            if root is not None:
-                # Remove namespace para facilitar parsing
-                for elem in root.iter():
-                    if '}' in str(elem.tag):
-                        elem.tag = elem.tag.split('}')[1]
-                
-                # Extrai URLs do sitemap
-                for url_elem in root.findall('.//url'):
-                    loc_elem = url_elem.find('loc')
-                    if loc_elem is not None and loc_elem.text:
-                        clean_url = loc_elem.text.strip()
-                        if self._is_valid_url(clean_url):
-                            urls.append(clean_url)
-                
-                # Se é sitemap index, processa sub-sitemaps
-                for sitemap_elem in root.findall('.//sitemap'):
-                    loc_elem = sitemap_elem.find('loc')
-                    if loc_elem is not None and loc_elem.text:
-                        try:
-                            clean_sub_url = loc_elem.text.strip()
-                            if self._is_valid_url(clean_sub_url):
-                                sub_urls = self.parse_sitemap(clean_sub_url)
-                                urls.extend(sub_urls)
-                        except Exception as e:
-                            self.logger.warning(f"Erro processando sub-sitemap: {e}")
-                
-                # Remove duplicatas
-                urls = list(dict.fromkeys(urls))
-                self.logger.info(f"Extraídas {len(urls)} URLs do sitemap {sitemap_url} (método: {parsing_method})")
+            self.logger.info(f"Extraídas {len(urls)} URLs do sitemap {sitemap_url}")
             
         except Exception as e:
             self.logger.error(f"Erro parseando sitemap {sitemap_url}: {e}")
-            # Log adicional para debug
-            self.logger.debug(f"Detalhes do erro: {type(e).__name__}: {str(e)}")
         
         return urls
-    
-    def _is_valid_url(self, url: str) -> bool:
-        """
-        🆕 Valida se URL é válida
-        """
-        try:
-            if not url or not isinstance(url, str):
-                return False
-            
-            # Remove espaços
-            url = url.strip()
-            
-            # Deve começar com http ou https
-            if not url.startswith(('http://', 'https://')):
-                return False
-            
-            # Parse básico
-            parsed = urlparse(url)
-            return bool(parsed.scheme and parsed.netloc)
-            
-        except Exception:
-            return False
 
 class SEOFrog:
     """Engine principal do SEOFrog v0.2 Enterprise"""
