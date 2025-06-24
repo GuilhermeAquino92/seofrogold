@@ -1,12 +1,13 @@
 """
 seofrog/parsers/seo_parser.py
-SEO Parser Enterprise do SEOFrog v0.2 - VERSÃO COMPLETA COM MIXED CONTENT
+SEO Parser Enterprise do SEOFrog v0.2 - VERSÃO COMPLETA COM MIXED CONTENT + LINKS MELHORADOS
 """
 
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import re
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -60,7 +61,7 @@ class SEOParser:
             # === HEADINGS ===
             self._parse_headings(soup, data)
             
-            # === LINKS ===
+            # === LINKS - VERSÃO MELHORADA ===
             self._parse_links(soup, data, url)
             
             # === IMAGES ===
@@ -357,10 +358,14 @@ class SEOParser:
         return "CSS escondido (método desconhecido)"
     
     def _parse_links(self, soup: BeautifulSoup, data: Dict, url: str):
-        """Parse de todos os links"""
+        """
+        Parse de todos os links - VERSÃO MELHORADA COMPLETA
+        Agora captura lista completa de links internos com resolução de redirects
+        """
         all_links = soup.find_all('a', href=True)
         internal_links = []
         external_links = []
+        internal_links_detailed = []  # NOVO: Lista detalhada para análise de redirects
         
         parsed_base = urlparse(url)
         
@@ -372,17 +377,184 @@ class SEOParser:
             full_url = urljoin(url, href)
             parsed_link = urlparse(full_url)
             
+            # Captura anchor text e atributos
+            anchor_text = link.get_text().strip()
+            link_title = link.get('title', '').strip()
+            link_classes = ' '.join(link.get('class', []))
+            
             if parsed_link.netloc == parsed_base.netloc:
                 internal_links.append(full_url)
+                
+                # NOVO: Resolve redirect para o link interno (com rate limiting)
+                redirect_info = self._resolve_internal_link_redirect(full_url)
+                
+                # NOVO: Armazena informações detalhadas do link interno
+                internal_links_detailed.append({
+                    'url': full_url,
+                    'final_url': redirect_info['final_url'],
+                    'status_code': redirect_info['status_code'],
+                    'has_redirect': redirect_info['has_redirect'],
+                    'redirect_type': redirect_info['redirect_type'],
+                    'href': href,  # href original (pode ser relativo)
+                    'anchor': anchor_text,
+                    'title': link_title,
+                    'classes': link_classes,
+                    'is_relative': not href.startswith(('http://', 'https://')),
+                    'has_anchor': bool(anchor_text),
+                    'tag_html': str(link)[:200],  # Primeiros 200 chars da tag
+                    'response_time': redirect_info.get('response_time', 0)
+                })
             elif parsed_link.netloc and parsed_link.netloc != parsed_base.netloc:
                 external_links.append(full_url)
         
+        # Dados tradicionais (mantém compatibilidade)
         data['internal_links_count'] = len(internal_links)
         data['external_links_count'] = len(external_links)
         data['total_links_count'] = len(all_links)
-        
-        # Análise de anchor text
         data['links_without_anchor'] = len([link for link in all_links if not link.get_text().strip()])
+        
+        # NOVO: Dados detalhados para análise de redirects
+        data['internal_links_detailed'] = internal_links_detailed
+        data['internal_redirects_count'] = len([link for link in internal_links_detailed if link['has_redirect']])
+        
+        # NOVO: Estatísticas de redirects por tipo
+        redirect_types = {}
+        for link in internal_links_detailed:
+            if link['has_redirect']:
+                redirect_type = link['redirect_type']
+                redirect_types[redirect_type] = redirect_types.get(redirect_type, 0) + 1
+        
+        data['internal_redirect_types'] = redirect_types
+
+    def _resolve_internal_link_redirect(self, url: str) -> dict:
+        """
+        Resolve redirecionamentos para um link interno específico
+        Usa HEAD request para eficiência com rate limiting
+        
+        Args:
+            url: URL do link interno para verificar
+            
+        Returns:
+            dict: Informações do redirect
+        """
+        try:
+            # Rate limiting: pequeno delay para não sobrecarregar servidor
+            time.sleep(0.1)
+            
+            # Configura session com timeout curto para não impactar performance
+            session = requests.Session()
+            session.verify = False  # Mesma config do HTTPEngine
+            
+            # Headers similares ao crawler principal
+            session.headers.update({
+                'User-Agent': 'SEOFrog/0.2 (+https://seofrog.com/bot)',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            })
+            
+            # Usa HEAD para ser mais eficiente
+            start_time = time.time()
+            response = session.head(
+                url, 
+                timeout=3,  # Timeout ainda menor
+                allow_redirects=False
+            )
+            response_time = time.time() - start_time
+            
+            # Verifica se há redirecionamento
+            if response.status_code in [301, 302, 303, 307, 308]:
+                location = response.headers.get('location', '')
+                if location:
+                    final_url = urljoin(url, location)
+                    redirect_type = self._classify_redirect_type(url, final_url)
+                    
+                    return {
+                        'final_url': final_url,
+                        'status_code': response.status_code,
+                        'has_redirect': True,
+                        'redirect_type': redirect_type,
+                        'response_time': response_time
+                    }
+            
+            # Sem redirecionamento
+            return {
+                'final_url': url,
+                'status_code': response.status_code,
+                'has_redirect': False,
+                'redirect_type': 'None',
+                'response_time': response_time
+            }
+            
+        except Exception as e:
+            # Em caso de erro, assume sem redirect
+            self.logger.debug(f"Erro verificando redirect para {url}: {e}")
+            return {
+                'final_url': url,
+                'status_code': 0,
+                'has_redirect': False,
+                'redirect_type': 'Error',
+                'response_time': 0,
+                'error': str(e)
+            }
+
+    def _classify_redirect_type(self, original_url: str, final_url: str) -> str:
+        """
+        Classifica o tipo de redirecionamento para análise
+        
+        Args:
+            original_url: URL original do link
+            final_url: URL final após redirect
+            
+        Returns:
+            str: Tipo do redirecionamento
+        """
+        try:
+            parsed_orig = urlparse(original_url)
+            parsed_final = urlparse(final_url)
+            
+            # HTTP -> HTTPS
+            if parsed_orig.scheme == 'http' and parsed_final.scheme == 'https':
+                return 'HTTP_to_HTTPS'
+            
+            # HTTPS -> HTTP (problemático)
+            if parsed_orig.scheme == 'https' and parsed_final.scheme == 'http':
+                return 'HTTPS_to_HTTP'
+            
+            # Capitalização no path
+            if (parsed_orig.netloc.lower() == parsed_final.netloc.lower() and 
+                parsed_orig.path != parsed_final.path and 
+                parsed_orig.path.lower() == parsed_final.path.lower()):
+                return 'Case_Change'
+            
+            # Trailing slash
+            if (parsed_orig.netloc == parsed_final.netloc and 
+                (parsed_orig.path.rstrip('/') == parsed_final.path.rstrip('/')) and
+                parsed_orig.path != parsed_final.path):
+                return 'Trailing_Slash'
+            
+            # Query string
+            if (parsed_orig.netloc == parsed_final.netloc and 
+                parsed_orig.path == parsed_final.path and 
+                parsed_orig.query != parsed_final.query):
+                return 'Query_String'
+            
+            # WWW differences
+            if (parsed_orig.path == parsed_final.path and
+                ('www.' in parsed_orig.netloc) != ('www.' in parsed_final.netloc)):
+                return 'WWW_Redirect'
+            
+            # Path redirect (mudança de estrutura)
+            if (parsed_orig.netloc == parsed_final.netloc and 
+                parsed_orig.path != parsed_final.path):
+                return 'Path_Change'
+            
+            # Domain redirect (mudança de domínio)
+            if parsed_orig.netloc != parsed_final.netloc:
+                return 'Domain_Change'
+            
+            return 'Other'
+            
+        except Exception:
+            return 'Unknown'
     
     def _parse_images(self, soup: BeautifulSoup, data: Dict):
         """Parse de todas as imagens"""
