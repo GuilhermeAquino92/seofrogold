@@ -228,7 +228,8 @@ class SchemaParser(ParserMixin):
         """
         Parse detalhado de Microdata
         """
-        microdata_items = self.safe_find_all(soup, attrs={'itemscope': True})
+        # 🚀 CORRIGIDO: Adicionado parâmetro tag True
+        microdata_items = self.safe_find_all(soup, True, attrs={'itemscope': True})
         
         data['schema_microdata_count'] = len(microdata_items)
         data['microdata_details'] = []
@@ -294,8 +295,8 @@ class SchemaParser(ParserMixin):
         """
         Parse detalhado de RDFa
         """
-        # RDFa pode usar 'typeof', 'property', 'resource', etc.
-        rdfa_items = self.safe_find_all(soup, attrs={'typeof': True})
+        # 🚀 CORRIGIDO: Adicionado parâmetro tag True
+        rdfa_items = self.safe_find_all(soup, True, attrs={'typeof': True})
         
         data['schema_rdfa_count'] = len(rdfa_items)
         data['rdfa_details'] = []

@@ -1,6 +1,6 @@
 """
 seofrog/core/crawler.py
-Core Engine Principal do SEOFrog v0.2 Enterprise
+Core Engine Principal do SEOFrog v0.2 Enterprise - ATUALIZADO PARA PARSERS MODULARES
 """
 
 import requests
@@ -27,7 +27,13 @@ from .exceptions import (
     MemoryException, URLException
 )
 from seofrog.utils.logger import get_logger, CrawlProgressLogger
-from seofrog.parsers.seo_parser import SEOParser
+
+# 🔥 PARSERS MODULARES - REMOVIDO SEOParser
+from seofrog.parsers.meta_parser import MetaParser
+from seofrog.parsers.technical_parser import TechnicalParser
+from seofrog.parsers.social_parser import SocialParser
+from seofrog.parsers.schema_parser import SchemaParser
+
 from seofrog.exporters.csv_exporter import CSVExporter
 
 class URLManager:
@@ -486,7 +492,13 @@ class SEOFrog:
         # Inicializa componentes
         self.url_manager = None
         self.http_engine = HTTPEngine(config)
-        self.seo_parser = SEOParser()
+        
+        # 🆕 PARSERS MODULARES
+        self.meta_parser = MetaParser()
+        self.technical_parser = TechnicalParser()
+        self.social_parser = SocialParser()
+        self.schema_parser = SchemaParser()
+        
         self.exporter = CSVExporter(config.output_dir)
         
         # Estado do crawl
@@ -563,7 +575,7 @@ class SEOFrog:
         return unique_seeds
     
     def crawl_url(self, url: str, depth: int) -> Optional[Dict]:
-        """Crawl de uma URL específica"""
+        """🔥 MÉTODO ATUALIZADO - Crawl de uma URL específica usando parsers modulares"""
         if self.should_stop:
             return None
             
@@ -587,16 +599,47 @@ class SEOFrog:
                     'url': url,
                     'status_code': 0,
                     'error': error_info.get('error', 'unknown'),
-                    'crawl_timestamp': datetime.now().isoformat()
+                    'crawl_timestamp': datetime.now().isoformat(),
+                    'depth': depth
                 }
             
-            # Parse da página
-            page_data = self.seo_parser.parse_page(url, response)
+            # === DADOS BÁSICOS DA RESPOSTA ===
+            data = {
+                'url': url,
+                'status_code': response.status_code,
+                'content_type': response.headers.get('content-type', ''),
+                'content_length': len(response.content),
+                'response_time': response.elapsed.total_seconds(),
+                'final_url': response.url,
+                'crawl_timestamp': datetime.now().isoformat(),
+                'depth': depth
+            }
+            
+            # Se não é HTML, retorna dados básicos
+            content_type = response.headers.get('content-type', '').lower()
+            if 'text/html' not in content_type:
+                data['content_type_category'] = self._categorize_content_type(content_type)
+                return data
+            
+            # === PARSE HTML COM PARSERS MODULARES ===
+            soup = BeautifulSoup(response.content, 'lxml')
+            
+            # 🔥 PARSE MODULAR
+            meta_data = self.meta_parser.parse(soup, url)
+            technical_data = self.technical_parser.parse(soup, url)
+            social_data = self.social_parser.parse(soup, url)
+            schema_data = self.schema_parser.parse(soup, url)
+            
+            # Merge todos os dados
+            data.update(meta_data)
+            data.update(technical_data)
+            data.update(social_data)
+            data.update(schema_data)
             
             # Adiciona dados de redirect se houver
             if redirect_chain:
-                page_data['redirect_chain'] = len(redirect_chain)
-                page_data['redirect_urls'] = [r['url'] for r in redirect_chain]
+                data['redirect_chain'] = len(redirect_chain)
+                data['redirect_urls'] = [r['url'] for r in redirect_chain]
             
             # Descobre novos links se dentro da profundidade
             if depth < self.config.max_depth and response.status_code == 200:
@@ -606,7 +649,7 @@ class SEOFrog:
             if self.config.delay > 0:
                 time.sleep(self.config.delay)
             
-            return page_data
+            return data
             
         except Exception as e:
             self.logger.error(f"Erro crítico crawling {url}: {e}")
@@ -614,8 +657,26 @@ class SEOFrog:
                 'url': url,
                 'status_code': 0,
                 'error': str(e),
-                'crawl_timestamp': datetime.now().isoformat()
+                'crawl_timestamp': datetime.now().isoformat(),
+                'depth': depth
             }
+    
+    def _categorize_content_type(self, content_type: str) -> str:
+        """🆕 Categoriza tipos de conteúdo não-HTML"""
+        content_type = content_type.lower()
+        
+        if 'image/' in content_type:
+            return 'image'
+        elif 'application/pdf' in content_type:
+            return 'pdf'
+        elif 'video/' in content_type:
+            return 'video'
+        elif 'audio/' in content_type:
+            return 'audio'
+        elif 'application/' in content_type:
+            return 'application'
+        else:
+            return 'other'
     
     def _discover_links(self, url: str, response: requests.Response, current_depth: int):
         """Descobre novos links para crawling"""

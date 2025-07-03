@@ -1,7 +1,7 @@
 """
 seofrog/exporters/excel_exporter.py
 Excel Exporter Enterprise do SEOFrog v0.2 - VERSÃO COMPLETA COM REDIRECTS
-Usa todas as 12 sheets especializadas + nova aba de redirects
+Usa todas as 13 sheets especializadas + nova aba de redirects
 """
 
 import pandas as pd
@@ -35,6 +35,8 @@ from .sheets.problemas_tecnicos import ProblemasTecnicosSheet
 from .sheets.problemas_performance import ProblemasPerformanceSheet
 from .sheets.mixed_content import MixedContentSheet
 from .sheets.analise_tecnica import AnaliseTecnicaSheet
+# 🆕 NOVA SHEET DE LINKS COM REDIRECTS
+from .sheets.links_internos_redirect import LinksInternosRedirectSheet
 
 class ExcelExporter:
     """
@@ -67,7 +69,8 @@ class ExcelExporter:
             ProblemasTecnicosSheet,     # 9. Canonical, viewport, charset
             ProblemasPerformanceSheet,  # 10. Páginas lentas/pesadas
             MixedContentSheet,          # 11. Problemas HTTPS/HTTP
-            AnaliseTecnicaSheet,        # 12. Análise técnica final
+            LinksInternosRedirectSheet, # 12. 🆕 Links com redirects
+            AnaliseTecnicaSheet,        # 13. Análise técnica final
         ]
     
     def export_results(self, crawl_data: List[Dict[str, Any]], filename: Optional[str] = None) -> str:
@@ -142,12 +145,12 @@ class ExcelExporter:
                 sheet_instance.create_sheet(df, writer)
                 
                 sheets_created += 1
-                self.logger.debug(f"✅ [{i:2d}/12] {sheet_name}")
+                self.logger.debug(f"✅ [{i:2d}/13] {sheet_name}")
                 
             except Exception as e:
                 sheets_failed += 1
                 sheet_name = getattr(sheet_class, '__name__', 'Unknown')
-                self.logger.error(f"❌ [{i:2d}/12] {sheet_name}: {e}")
+                self.logger.error(f"❌ [{i:2d}/13] {sheet_name}: {e}")
                 
                 # Cria sheet de erro como fallback
                 try:
