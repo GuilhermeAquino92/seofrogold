@@ -1,6 +1,7 @@
 """
 seofrog/core/crawler.py
 Core Engine Principal do SEOFrog v0.2 Enterprise - ATUALIZADO PARA PARSERS MODULARES
+🚀 VERSÃO CORRIGIDA: Detecta redirects corretamente
 """
 
 import requests
@@ -575,7 +576,7 @@ class SEOFrog:
         return unique_seeds
     
     def crawl_url(self, url: str, depth: int) -> Optional[Dict]:
-        """🔥 MÉTODO ATUALIZADO - Crawl de uma URL específica usando parsers modulares"""
+        """🚀 MÉTODO CORRIGIDO - Crawl com detecção correta de redirects"""
         if self.should_stop:
             return None
             
@@ -603,14 +604,19 @@ class SEOFrog:
                     'depth': depth
                 }
             
+            # 🚀 CORREÇÃO: Determina status code e URLs corretos ANTES do parser
+            original_status_code = self._get_original_status_code(redirect_chain, response)
+            final_url = self._get_final_url_from_chain(url, redirect_chain, response)
+            
             # === DADOS BÁSICOS DA RESPOSTA ===
             data = {
                 'url': url,
-                'status_code': response.status_code,
+                'status_code': original_status_code,  # 🚀 USA STATUS ORIGINAL (301/302)
                 'content_type': response.headers.get('content-type', ''),
                 'content_length': len(response.content),
                 'response_time': response.elapsed.total_seconds(),
-                'final_url': response.url,
+                'final_url': final_url,               # 🚀 USA URL FINAL CORRETA
+                'original_url': url,                  # 🚀 PRESERVA URL ORIGINAL
                 'crawl_timestamp': datetime.now().isoformat(),
                 'depth': depth
             }
@@ -636,10 +642,30 @@ class SEOFrog:
             data.update(social_data)
             data.update(schema_data)
             
-            # Adiciona dados de redirect se houver
+            # 🚀 ADICIONA DADOS DETALHADOS DE REDIRECT
             if redirect_chain:
-                data['redirect_chain'] = len(redirect_chain)
+                data['redirect_chain_length'] = len(redirect_chain)
+                data['redirect_chain_data'] = redirect_chain
                 data['redirect_urls'] = [r['url'] for r in redirect_chain]
+                data['has_redirect'] = True
+                
+                # Dados do primeiro redirect (mais importante para SEO)
+                first_redirect = redirect_chain[0]
+                data['redirect_status_code'] = first_redirect.get('status_code', original_status_code)
+                data['redirect_location'] = first_redirect.get('location', final_url)
+                
+                # Classifica tipo de redirect
+                data['redirect_type'] = self._classify_redirect_type(url, final_url)
+                
+                # Informações para análise SEO
+                data['redirect_is_permanent'] = original_status_code in [301, 308]
+                data['redirect_is_temporary'] = original_status_code in [302, 303, 307]
+                
+                self.logger.debug(f"Redirect detectado: {url} [{original_status_code}] → {final_url}")
+            else:
+                data['has_redirect'] = False
+                data['redirect_type'] = 'None'
+                data['redirect_chain_length'] = 0
             
             # Descobre novos links se dentro da profundidade
             if depth < self.config.max_depth and response.status_code == 200:
@@ -660,6 +686,83 @@ class SEOFrog:
                 'crawl_timestamp': datetime.now().isoformat(),
                 'depth': depth
             }
+    
+    def _get_original_status_code(self, redirect_chain: List[Dict], final_response) -> int:
+        """
+        🚀 NOVO: Determina o status code que deve ser reportado
+        """
+        if redirect_chain:
+            # Se houve redirects, retorna o status do PRIMEIRO redirect
+            return redirect_chain[0].get('status_code', final_response.status_code)
+        else:
+            # Se não houve redirects, retorna o status final
+            return final_response.status_code
+    
+    def _get_final_url_from_chain(self, original_url: str, redirect_chain: List[Dict], final_response) -> str:
+        """
+        🚀 NOVO: Determina a URL final correta
+        """
+        if redirect_chain:
+            # Se houve redirects, a URL final é a do response final
+            return final_response.url
+        else:
+            # Se não houve redirects, URL final = URL original
+            return original_url
+    
+    def _classify_redirect_type(self, original_url: str, final_url: str) -> str:
+        """
+        🚀 NOVO: Classifica o tipo de redirect para análise SEO
+        """
+        try:
+            parsed_orig = urlparse(original_url)
+            parsed_final = urlparse(final_url)
+            
+            # HTTP -> HTTPS (comum e bom)
+            if parsed_orig.scheme == 'http' and parsed_final.scheme == 'https':
+                return 'HTTP_to_HTTPS'
+            
+            # HTTPS -> HTTP (problema grave!)
+            if parsed_orig.scheme == 'https' and parsed_final.scheme == 'http':
+                return 'HTTPS_to_HTTP'
+            
+            # Redirect de WWW
+            if ('www.' in parsed_orig.netloc) != ('www.' in parsed_final.netloc):
+                if 'www.' in parsed_orig.netloc:
+                    return 'WWW_to_Non_WWW'
+                else:
+                    return 'Non_WWW_to_WWW'
+            
+            # Capitalização no path
+            if (parsed_orig.netloc.lower() == parsed_final.netloc.lower() and 
+                parsed_orig.path != parsed_final.path and 
+                parsed_orig.path.lower() == parsed_final.path.lower()):
+                return 'Capitalization_Fix'
+            
+            # Trailing slash
+            if (parsed_orig.netloc == parsed_final.netloc and 
+                parsed_orig.path.rstrip('/') == parsed_final.path.rstrip('/') and
+                parsed_orig.path != parsed_final.path):
+                return 'Trailing_Slash'
+            
+            # Query string changes
+            if (parsed_orig.netloc == parsed_final.netloc and 
+                parsed_orig.path == parsed_final.path and 
+                parsed_orig.query != parsed_final.query):
+                return 'Query_String_Change'
+            
+            # Path redirect (mudança de estrutura)
+            if (parsed_orig.netloc == parsed_final.netloc and 
+                parsed_orig.path != parsed_final.path):
+                return 'Path_Change'
+            
+            # Domain redirect (mudança de domínio)
+            if parsed_orig.netloc != parsed_final.netloc:
+                return 'Domain_Change'
+            
+            return 'Other'
+            
+        except Exception:
+            return 'Unknown'
     
     def _categorize_content_type(self, content_type: str) -> str:
         """🆕 Categoriza tipos de conteúdo não-HTML"""
