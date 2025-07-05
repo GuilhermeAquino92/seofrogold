@@ -36,7 +36,6 @@ from .sheets.problemas_performance import ProblemasPerformanceSheet
 from .sheets.mixed_content import MixedContentSheet
 from .sheets.analise_tecnica import AnaliseTecnicaSheet
 # 🆕 NOVA SHEET DE LINKS COM REDIRECTS
-from .sheets.links_internos_redirect import LinksInternosRedirectSheet
 
 class ExcelExporter:
     """
