@@ -26,10 +26,10 @@ class SEOParser:
     🎼 Parser Orquestrador - Coordena todos os parsers especializados
     Não contém lógica de parsing, apenas delega para os parsers especializados
     """
-    
+
     def __init__(self):
         self.logger = get_logger('SEOParser')
-        
+
         # Inicializa todos os parsers especializados
         self.meta_parser = MetaParser()
         self.headings_parser = HeadingsParser()
@@ -38,21 +38,21 @@ class SEOParser:
         self.technical_parser = TechnicalParser()
         self.content_parser = ContentParser()
         self.links_parser = LinksParser()
-        
+
         self.logger.info("🎼 SEOParser modular inicializado com todos os parsers especializados")
-    
+
     def parse_page(self, url: str, response: requests.Response) -> Dict[str, Any]:
         """
         🚀 Parse completo usando APENAS parsers especializados
-        
+
         Args:
             url: URL da página
             response: Response object do requests
-            
+
         Returns:
             Dict com todos os dados SEO extraídos pelos parsers especializados
         """
-        
+
         # === DADOS BÁSICOS DA RESPOSTA ===
         data = {
             'url': url,
@@ -63,22 +63,17 @@ class SEOParser:
             'final_url': response.url,
             'crawl_timestamp': datetime.now().isoformat()
         }
-        
+
         # Se não é HTML, retorna apenas dados básicos
         content_type = response.headers.get('content-type', '').lower()
         if 'text/html' not in content_type:
             data['content_type_category'] = self._categorize_content_type(content_type)
             return data
-        
+
         try:
-            # Parse do HTML
             soup = BeautifulSoup(response.content, 'lxml')
-            
-            # ============================================
-            # 🎯 PARSERS ESPECIALIZADOS - ORDEM OTIMIZADA
-            # ============================================
-            
-            # 1. CONTENT PARSER (primeiro, porque outros precisam do word_count)
+
+            # 1. CONTENT PARSER
             try:
                 content_data = self.content_parser.parse(soup)
                 data.update(content_data)
@@ -86,8 +81,8 @@ class SEOParser:
             except Exception as e:
                 self.logger.error(f"❌ ContentParser falhou: {e}")
                 data['content_parser_error'] = str(e)
-            
-            # 2. META PARSER (title, description, canonical, robots)
+
+            # 2. META PARSER
             try:
                 meta_data = self.meta_parser.parse(soup, url)
                 data.update(meta_data)
@@ -95,28 +90,28 @@ class SEOParser:
             except Exception as e:
                 self.logger.error(f"❌ MetaParser falhou: {e}")
                 data['meta_parser_error'] = str(e)
-            
-            # 3. HEADINGS PARSER (H1-H6 com análise avançada)
+
+            # 3. HEADINGS PARSER
             try:
-                word_count = data.get('word_count')  # Do content_parser
+                word_count = data.get('word_count')
                 headings_data = self.headings_parser.parse(soup, word_count)
                 data.update(headings_data)
                 self.logger.debug(f"✅ HeadingsParser: {len(headings_data)} campos")
             except Exception as e:
                 self.logger.error(f"❌ HeadingsParser falhou: {e}")
                 data['headings_parser_error'] = str(e)
-            
-            # 4. IMAGES PARSER (análise completa de imagens)
+
+            # 4. IMAGES PARSER
             try:
-                word_count = data.get('word_count')  # Do content_parser
+                word_count = data.get('word_count')
                 images_data = self.images_parser.parse(soup, word_count)
                 data.update(images_data)
                 self.logger.debug(f"✅ ImagesParser: {len(images_data)} campos")
             except Exception as e:
                 self.logger.error(f"❌ ImagesParser falhou: {e}")
                 data['images_parser_error'] = str(e)
-            
-            # 5. SECURITY PARSER (Mixed Content + Security Headers)
+
+            # 5. SECURITY PARSER
             try:
                 security_data = self.security_parser.parse(soup, url, response.headers)
                 data.update(security_data)
@@ -124,8 +119,8 @@ class SEOParser:
             except Exception as e:
                 self.logger.error(f"❌ SecurityParser falhou: {e}")
                 data['security_parser_error'] = str(e)
-            
-            # 6. TECHNICAL PARSER (viewport, charset, favicon, etc.)
+
+            # 6. TECHNICAL PARSER
             try:
                 technical_data = self.technical_parser.parse(soup, url)
                 data.update(technical_data)
@@ -133,37 +128,36 @@ class SEOParser:
             except Exception as e:
                 self.logger.error(f"❌ TechnicalParser falhou: {e}")
                 data['technical_parser_error'] = str(e)
-            
-            # 7. LINKS PARSER (análise completa de links internos/externos)
+
+            # 7. LINKS PARSER
             try:
-                word_count = data.get('word_count')  # Do content_parser
+                word_count = data.get('word_count')
                 links_data = self.links_parser.parse(soup, url, word_count)
                 data.update(links_data)
                 self.logger.debug(f"✅ LinksParser: {len(links_data)} campos")
+
+                # ⬇️ Adiciona detalhes de redirects internos para exportação
+                data['internal_redirects_details'] = self.links_parser.internal_redirect_links
+
             except Exception as e:
                 self.logger.error(f"❌ LinksParser falhou: {e}")
                 data['links_parser_error'] = str(e)
-            
-            # ============================================
-            # 📊 LOG FINAL DOS RESULTADOS
-            # ============================================
-            
+
             total_fields = len(data)
             errors = len([k for k in data.keys() if k.endswith('_parser_error')])
-            
-            self.logger.info(f"🎯 Parsing completo: {total_fields} campos extraídos")
+
+            self.logger.info(f"🌟 Parsing completo: {total_fields} campos extraídos")
             if errors > 0:
                 self.logger.warning(f"⚠️ {errors} parsers com erro")
-            
+
             return data
-            
+
         except Exception as e:
             self.logger.error(f"❌ Erro crítico no parsing de {url}: {e}")
             data['parse_error'] = str(e)
             return data
-    
+
     def _categorize_content_type(self, content_type: str) -> str:
-        """Categoriza tipo de conteúdo (função auxiliar)"""
         if 'image/' in content_type:
             return 'image'
         elif 'text/css' in content_type:
@@ -178,12 +172,8 @@ class SEOParser:
             return 'xml'
         else:
             return 'other'
-    
+
     def get_parser_status(self) -> Dict[str, bool]:
-        """
-        🔍 Retorna status de todos os parsers especializados
-        Útil para debugging
-        """
         return {
             'meta_parser': self.meta_parser is not None,
             'headings_parser': self.headings_parser is not None,
@@ -193,11 +183,8 @@ class SEOParser:
             'content_parser': self.content_parser is not None,
             'links_parser': self.links_parser is not None,
         }
-    
+
     def get_parser_info(self) -> Dict[str, str]:
-        """
-        📋 Retorna informações sobre os parsers especializados
-        """
         return {
             'architecture': 'modular',
             'version': '0.2',
