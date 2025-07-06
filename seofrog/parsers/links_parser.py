@@ -33,7 +33,6 @@ class LinksParser(ParserMixin):
             self.redirect_cache = create_redirect_cache(
                 cache_dir="seofrog_cache",
                 ttl_hours=24,
-                backend="auto"
             )
         else:
             self.redirect_cache = None

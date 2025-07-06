@@ -35,8 +35,11 @@ from seofrog.parsers.meta_parser import MetaParser
 from seofrog.parsers.technical_parser import TechnicalParser
 from seofrog.parsers.social_parser import SocialParser
 from seofrog.parsers.schema_parser import SchemaParser
-
 from seofrog.exporters.csv_exporter import CSVExporter
+from seofrog.parsers.images_parser import ImagesParser
+from seofrog.parsers.security_parser import SecurityParser
+from seofrog.parsers.content_parser import ContentParser
+from seofrog.parsers.headings_parser import HeadingsParser
 
 class URLManager:
     """Gerenciador enterprise de URLs com normalização avançada"""
@@ -501,6 +504,11 @@ class SEOFrog:
         self.technical_parser = TechnicalParser()
         self.social_parser = SocialParser()
         self.schema_parser = SchemaParser()
+        self.images_parser = ImagesParser()
+        self.security_parser = SecurityParser()
+        self.content_parser = ContentParser()
+        self.headings_parser = HeadingsParser()
+        self.links_parser = LinksParser()
         
         self.exporter = CSVExporter(config.output_dir)
         
@@ -637,12 +645,24 @@ class SEOFrog:
             technical_data = self.technical_parser.parse(soup, url)
             social_data = self.social_parser.parse(soup, url)
             schema_data = self.schema_parser.parse(soup, url)
+            content_data = self.content_parser.parse(soup)
+            images_data = self.images_parser.parse(soup, content_data.get('word_count'))
+            security_data = self.security_parser.parse(soup, url, response.headers)
+            headings_data = self.headings_parser.parse(soup, content_data.get('word_count', 0))
+            links_data = self.links_parser.parse(soup, url, content_data.get('word_count'))
+        
             
             # Merge todos os dados
             data.update(meta_data)
             data.update(technical_data)
             data.update(social_data)
             data.update(schema_data)
+            data.update(content_data)
+            data.update(images_data)
+            data.update(security_data)
+            data.update(headings_data)
+            data.update(links_data)
+
             
             # 🚀 ADICIONA DADOS DETALHADOS DE REDIRECT
             if redirect_chain:
