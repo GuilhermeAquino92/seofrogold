@@ -1,5 +1,7 @@
 import datetime
-import requests
+import pytest
+
+requests = pytest.importorskip("requests")
 
 from seofrog.core.crawler import SEOFrog, URLManager
 from seofrog.core.config import CrawlConfig
