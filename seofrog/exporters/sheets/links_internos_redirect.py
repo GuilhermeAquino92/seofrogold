@@ -1,10 +1,11 @@
 """
 seofrog/exporters/sheets/links_internos_redirect.py
 Aba "Internal" - Links internos com redirects (igual Screaming Frog)
-🔧 VERSÃO CORRIGIDA: Acessa dados corretos com Anchor Text e Link Path
+🔧 VERSÃO CORRIGIDA COMPLETA: Acessa dados corretos com Anchor Text e Link Path
 """
 
 import pandas as pd
+import json
 from typing import List, Dict, Any
 from .base_sheet import BaseSheet
 from seofrog.utils.logger import get_logger
@@ -57,14 +58,14 @@ class LinksInternosRedirectSheet(BaseSheet):
     
     def _collect_redirect_data(self, df: pd.DataFrame) -> List[Dict[str, str]]:
         """
-        🔧 VERSÃO CORRIGIDA - Acessa dados de redirects da coluna correta
+        🔧 VERSÃO CORRIGIDA COMPLETA - Acessa dados de redirects da coluna correta
         Agora pega os dados do LinksParser com Anchor Text e Link Path
         """
         redirects_data = []
         
         for _, row in df.iterrows():
             try:
-                # 🆕 CORREÇÃO: Acessa dados do LinksParser via coluna 'internal_redirects_for_this_url'
+                # ✅ CORREÇÃO: Acessa dados do LinksParser via coluna 'internal_redirects_for_this_url'
                 if 'internal_redirects_for_this_url' in row and pd.notna(row['internal_redirects_for_this_url']):
                     internal_redirects = row['internal_redirects_for_this_url']
                     
@@ -72,13 +73,13 @@ class LinksInternosRedirectSheet(BaseSheet):
                     if isinstance(internal_redirects, list):
                         for redirect_data in internal_redirects:
                             if isinstance(redirect_data, dict):
-                                # 🎯 AQUI ESTÃO OS DADOS COM ANCHOR TEXT E LINK PATH!
+                                # ✅ AQUI ESTÁ O CÓDIGO QUE ESTAVA FALTANDO:
                                 redirect_export = {
-                                    'Type': 'Redirect',  # Sempre redirect nesta aba
+                                    'Type': 'Hyperlink',
                                     'From': str(redirect_data.get('from_url', '')),
                                     'To Original': str(redirect_data.get('to_original', '')),
                                     'To Final': str(redirect_data.get('to_final', '')),
-                                    'Anchor': str(redirect_data.get('anchor_text', '')),  # ✅ "Consulte as condições"!
+                                    'Anchor': str(redirect_data.get('anchor_text', '')),
                                     'Alt Text': str(redirect_data.get('alt_text', '')),
                                     'Follow': str(redirect_data.get('follow', True)),
                                     'Target': str(redirect_data.get('target', '')),
@@ -86,65 +87,61 @@ class LinksInternosRedirectSheet(BaseSheet):
                                     'Status Code': str(redirect_data.get('status_code', '')),
                                     'Status': self._get_status_text(redirect_data.get('status_code', 0)),
                                     'Redirected': 'True',
-                                    'Link Path': str(redirect_data.get('link_path', ''))  # ✅ XPath completo!
+                                    'Link Path': str(redirect_data.get('link_path', ''))
                                 }
                                 redirects_data.append(redirect_export)
-                
-                # 🆕 FALLBACK: Mantém método alternativo apenas para redirects do sistema (HTTP→HTTPS)
-                elif 'url' in row and 'final_url' in row:
-                    if pd.notna(row['url']) and pd.notna(row['final_url']):
-                        if str(row['url']).strip() != str(row['final_url']).strip():
-                            # Só adiciona se não é um redirect de link interno já processado
-                            redirect_item = {
-                                'Type': 'Redirect',
-                                'From': str(row['url']),
-                                'To Original': str(row['final_url']),
-                                'To Final': str(row['final_url']),
-                                'Anchor': '',  # Redirects automáticos não têm anchor
-                                'Alt Text': '',
-                                'Follow': 'True',
-                                'Target': '',
-                                'Rel': '',
-                                'Status Code': str(row.get('status_code', '')),
-                                'Status': self._get_status_text(row.get('status_code', 0)),
-                                'Redirected': 'True',
-                                'Link Path': 'System Redirect'
-                            }
-                            redirects_data.append(redirect_item)
+                                
+                    # Se é string (dados serializados), tentar deserializar
+                    elif isinstance(internal_redirects, str):
+                        try:
+                            parsed_redirects = json.loads(internal_redirects)
+                            if isinstance(parsed_redirects, list):
+                                for redirect_data in parsed_redirects:
+                                    if isinstance(redirect_data, dict):
+                                        redirect_export = {
+                                            'Type': 'Hyperlink',
+                                            'From': str(redirect_data.get('from_url', '')),
+                                            'To Original': str(redirect_data.get('to_original', '')),
+                                            'To Final': str(redirect_data.get('to_final', '')),
+                                            'Anchor': str(redirect_data.get('anchor_text', '')),
+                                            'Alt Text': str(redirect_data.get('alt_text', '')),
+                                            'Follow': str(redirect_data.get('follow', True)),
+                                            'Target': str(redirect_data.get('target', '')),
+                                            'Rel': str(redirect_data.get('rel', '')),
+                                            'Status Code': str(redirect_data.get('status_code', '')),
+                                            'Status': self._get_status_text(redirect_data.get('status_code', 0)),
+                                            'Redirected': 'True',
+                                            'Link Path': str(redirect_data.get('link_path', ''))
+                                        }
+                                        redirects_data.append(redirect_export)
+                        except json.JSONDecodeError:
+                            self.logger.warning(f"Erro deserializando redirects para URL: {row.get('url', 'N/A')}")
                             
             except Exception as e:
-                self.logger.debug(f"Erro processando linha para redirects: {e}")
+                self.logger.error(f"Erro processando redirects: {e}")
                 continue
         
         return redirects_data
-    
+
     def _get_status_text(self, status_code: int) -> str:
-        """
-        Converte status code para texto descritivo
-        """
+        """Converte código status em texto"""
         status_map = {
-            301: 'Moved Permanently',
-            302: 'Found', 
-            303: 'See Other',
-            307: 'Temporary Redirect',
-            308: 'Permanent Redirect',
-            200: 'OK',
-            404: 'Not Found',
-            500: 'Internal Server Error'
+            200: "OK",
+            301: "Moved Permanently", 
+            302: "Found",
+            307: "Temporary Redirect",
+            308: "Permanent Redirect",
+            404: "Not Found",
+            500: "Internal Server Error"
         }
-        
-        try:
-            code = int(status_code)
-            return status_map.get(code, f'HTTP {code}')
-        except:
-            return 'Unknown'
+        return status_map.get(status_code, f"HTTP {status_code}")
     
     def _create_empty_dataframe(self) -> pd.DataFrame:
         """
-        Cria DataFrame vazio com headers padrão (igual Screaming Frog)
+        Cria DataFrame vazio com headers corretos (igual Screaming Frog)
         """
         columns = [
-            'Type',           # Hyperlink, Redirect, etc.
+            'Type',           # Tipo do link (Hyperlink)
             'From',           # URL de origem
             'To Original',    # URL destino original
             'To Final',       # URL destino final (após redirects)
