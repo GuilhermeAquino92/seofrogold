@@ -1,4 +1,3 @@
-from seofrog.parsers.links_parser import LinksParser
 """
 seofrog/core/crawler.py
 Core Engine Principal do SEOFrog v0.2 Enterprise - ATUALIZADO PARA PARSERS MODULARES
@@ -193,7 +192,7 @@ class HTTPEngine:
                     try:
                         current_response = self.session.get(
                             next_url,
-                            timeout=self.config.timeout,
+                            timeout=self.config.timeout,from seofrog.parsers.links_parser import LinksParser
 
                             allow_redirects=False,
                             stream=True
