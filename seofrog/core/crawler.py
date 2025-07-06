@@ -34,6 +34,7 @@ from seofrog.parsers.meta_parser import MetaParser
 from seofrog.parsers.technical_parser import TechnicalParser
 from seofrog.parsers.social_parser import SocialParser
 from seofrog.parsers.schema_parser import SchemaParser
+from seofrog.parsers.links_parser import LinksParser
 
 from seofrog.exporters.csv_exporter import CSVExporter
 
@@ -499,6 +500,7 @@ class SEOFrog:
         self.technical_parser = TechnicalParser()
         self.social_parser = SocialParser()
         self.schema_parser = SchemaParser()
+        self.links_parser = LinksParser()
         
         self.exporter = CSVExporter(config.output_dir)
         
@@ -635,12 +637,14 @@ class SEOFrog:
             technical_data = self.technical_parser.parse(soup, url)
             social_data = self.social_parser.parse(soup, url)
             schema_data = self.schema_parser.parse(soup, url)
-            
+            links_data = self.links_parser.parse(soup, url)
+
             # Merge todos os dados
             data.update(meta_data)
             data.update(technical_data)
             data.update(social_data)
             data.update(schema_data)
+            data.update(links_data)
             
             # 🚀 ADICIONA DADOS DETALHADOS DE REDIRECT
             if redirect_chain:
@@ -921,7 +925,7 @@ class SEOFrog:
         
         self.progress_logger.log_final_stats(len(self.results), success_count, error_count)
         self.logger.info(f"✅ SEOFrog crawl finalizado! {len(self.results)} URLs processadas em {elapsed:.1f}s")
-        
+        self.links_parser.close()
         return self.results
     
     def export_results(self, format: str = 'xlsx', filename: str = None) -> str:
