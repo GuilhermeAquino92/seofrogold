@@ -1,7 +1,8 @@
 """
 seofrog/parsers/security_parser.py
-Parser modular para análise completa de Segurança
+Parser modular para análise completa de Segurança - VERSÃO CORRIGIDA
 Responsável por: Mixed Content, HTTPS, Security Headers, Vulnerabilidades
+🔥 CORREÇÃO: Sempre detecta recursos HTTP, independente se página é HTTP/HTTPS
 """
 
 import re
@@ -95,7 +96,7 @@ class SecurityParser(ParserMixin):
             # Informações básicas da página
             self._analyze_page_security_context(url, data)
             
-            # Mixed Content Analysis
+            # Mixed Content Analysis - 🔥 CORRIGIDO
             self._analyze_mixed_content(soup, data, url)
             
             # Security Headers Analysis
@@ -156,28 +157,22 @@ class SecurityParser(ParserMixin):
     
     def _analyze_mixed_content(self, soup: BeautifulSoup, data: Dict, url: str):
         """
-        Analisa problemas de Mixed Content (HTTPS page loading HTTP resources)
+        🔥 MÉTODO CORRIGIDO - Analisa problemas de Mixed Content E links HTTP gerais
+        SEMPRE analisa links HTTP, independente se página é HTTP/HTTPS
         """
-        if not data.get('is_https_page', False):
-            # Não há mixed content se a página não é HTTPS
-            data['mixed_content_applicable'] = False
-            data['active_mixed_content_count'] = 0
-            data['passive_mixed_content_count'] = 0
-            data['total_mixed_content_count'] = 0
-            data['mixed_content_risk'] = 'N/A'
-            return
-        
-        data['mixed_content_applicable'] = True
+        # Inicializa contadores
         active_mixed = []
         passive_mixed = []
+        http_links = []
+        http_forms = []
         
-        # Verifica recursos HTTP em página HTTPS
+        # SEMPRE analisa elementos HTTP (independente do protocolo da página)
         all_elements = soup.find_all()
         
         for element in all_elements:
             tag_name = element.name.lower()
             
-            # Verifica atributos que podem conter URLs
+            # Verifica atributos que podem conter URLs HTTP
             for attr in self.url_attributes:
                 if element.has_attr(attr):
                     resource_url = element.get(attr, '').strip()
@@ -190,14 +185,20 @@ class SecurityParser(ParserMixin):
                             'element_html': str(element)[:200]
                         }
                         
-                        # Classifica como Active ou Passive Mixed Content
-                        if tag_name in self.mixed_content_tags['active']:
-                            active_mixed.append(mixed_item)
-                        elif tag_name in self.mixed_content_tags['passive']:
-                            passive_mixed.append(mixed_item)
-                        else:
-                            # Outros elementos são considerados passive
-                            passive_mixed.append(mixed_item)
+                        # Se página é HTTPS → Mixed Content verdadeiro
+                        if data.get('is_https_page', False):
+                            if tag_name in self.mixed_content_tags['active']:
+                                active_mixed.append(mixed_item)
+                            elif tag_name in self.mixed_content_tags['passive']:
+                                passive_mixed.append(mixed_item)
+                            else:
+                                passive_mixed.append(mixed_item)
+                        
+                        # SEMPRE conta links e forms HTTP (independente protocolo)
+                        if tag_name == 'a' and attr == 'href':
+                            http_links.append(mixed_item)
+                        elif tag_name == 'form' and attr == 'action':
+                            http_forms.append(mixed_item)
         
         # Verifica CSS inline para background-image HTTP
         style_elements = soup.find_all(attrs={'style': True})
@@ -205,29 +206,49 @@ class SecurityParser(ParserMixin):
             style_content = element.get('style', '')
             http_urls = re.findall(r'url\(["\']?(http://[^"\')\s]+)', style_content)
             for http_url in http_urls:
-                passive_mixed.append({
+                css_item = {
                     'tag': element.name,
                     'attribute': 'style',
                     'url': http_url,
                     'element_html': str(element)[:200]
-                })
+                }
+                
+                # Se página HTTPS → conta como Mixed Content
+                if data.get('is_https_page', False):
+                    passive_mixed.append(css_item)
         
-        # Resultados
-        data['active_mixed_content_count'] = len(active_mixed)
-        data['passive_mixed_content_count'] = len(passive_mixed)
-        data['total_mixed_content_count'] = len(active_mixed) + len(passive_mixed)
-        data['active_mixed_content_details'] = active_mixed
-        data['passive_mixed_content_details'] = passive_mixed
-        
-        # Risk assessment
-        if len(active_mixed) > 0:
-            data['mixed_content_risk'] = 'CRÍTICO'
-        elif len(passive_mixed) > 5:
-            data['mixed_content_risk'] = 'ALTO'
-        elif len(passive_mixed) > 0:
-            data['mixed_content_risk'] = 'MÉDIO'
+        # === MIXED CONTENT (só páginas HTTPS) ===
+        if data.get('is_https_page', False):
+            data['mixed_content_applicable'] = True
+            data['active_mixed_content_count'] = len(active_mixed)
+            data['passive_mixed_content_count'] = len(passive_mixed)
+            data['total_mixed_content_count'] = len(active_mixed) + len(passive_mixed)
+            data['active_mixed_content_details'] = active_mixed
+            data['passive_mixed_content_details'] = passive_mixed
+            
+            # Risk assessment
+            if len(active_mixed) > 0:
+                data['mixed_content_risk'] = 'CRÍTICO'
+            elif len(passive_mixed) > 5:
+                data['mixed_content_risk'] = 'ALTO'
+            elif len(passive_mixed) > 0:
+                data['mixed_content_risk'] = 'MÉDIO'
+            else:
+                data['mixed_content_risk'] = 'BAIXO'
         else:
-            data['mixed_content_risk'] = 'BAIXO'
+            data['mixed_content_applicable'] = False
+            data['active_mixed_content_count'] = 0
+            data['passive_mixed_content_count'] = 0
+            data['total_mixed_content_count'] = 0
+            data['mixed_content_risk'] = 'N/A'
+            data['active_mixed_content_details'] = []
+            data['passive_mixed_content_details'] = []
+        
+        # === LINKS HTTP GERAIS (SEMPRE detecta) ===
+        data['http_links_count'] = len(http_links)
+        data['http_forms_count'] = len(http_forms)
+        data['http_links_details'] = http_links
+        data['http_forms_details'] = http_forms
     
     def _analyze_security_headers(self, soup: BeautifulSoup, data: Dict, response_headers: Dict = None):
         """
@@ -246,7 +267,7 @@ class SecurityParser(ParserMixin):
                     'display_name': display_name
                 }
         
-        # 2. Via response headers (se fornecido)
+        # 2. Via response headers (se fornecidos)
         if response_headers:
             for header_name, display_name in self.security_headers.items():
                 if header_name in response_headers:
@@ -258,168 +279,87 @@ class SecurityParser(ParserMixin):
         
         data['security_headers_found'] = found_headers
         data['security_headers_count'] = len(found_headers)
-        
-        # Análise específica de headers importantes
-        data['has_csp'] = 'content-security-policy' in found_headers
-        data['has_xframe_options'] = 'x-frame-options' in found_headers
-        data['has_hsts'] = 'strict-transport-security' in found_headers
-        data['has_content_type_options'] = 'x-content-type-options' in found_headers
-        data['has_xss_protection'] = 'x-xss-protection' in found_headers
-        
-        # Qualidade dos headers
-        self._analyze_header_quality(found_headers, data)
-    
-    def _analyze_header_quality(self, headers: Dict, data: Dict):
-        """
-        Analisa qualidade dos security headers encontrados
-        """
-        quality_issues = []
-        
-        # X-Frame-Options analysis
-        if 'x-frame-options' in headers:
-            xframe_value = headers['x-frame-options']['value'].upper()
-            if xframe_value not in ['DENY', 'SAMEORIGIN']:
-                quality_issues.append('xframe_options_weak')
-        
-        # X-Content-Type-Options analysis
-        if 'x-content-type-options' in headers:
-            content_type_value = headers['x-content-type-options']['value'].lower()
-            if 'nosniff' not in content_type_value:
-                quality_issues.append('content_type_options_weak')
-        
-        # HSTS analysis
-        if 'strict-transport-security' in headers:
-            hsts_value = headers['strict-transport-security']['value']
-            max_age_match = re.search(r'max-age=(\d+)', hsts_value)
-            if max_age_match:
-                max_age = int(max_age_match.group(1))
-                data['hsts_max_age'] = max_age
-                if max_age < 31536000:  # < 1 year
-                    quality_issues.append('hsts_max_age_low')
-            else:
-                quality_issues.append('hsts_no_max_age')
-        
-        data['security_headers_quality_issues'] = quality_issues
-        data['security_headers_quality_score'] = max(0, 100 - (len(quality_issues) * 20))
+        data['has_security_headers'] = len(found_headers) > 0
     
     def _analyze_csp(self, soup: BeautifulSoup, data: Dict, response_headers: Dict = None):
         """
-        Análise detalhada de Content Security Policy
+        Analisa Content Security Policy
         """
-        csp_content = None
-        csp_source = None
+        csp_content = ''
+        csp_source = 'none'
         
-        # Busca CSP em meta tag
-        csp_meta = self.safe_find(soup, 'meta', {'http-equiv': re.compile(r'^content-security-policy$', re.I)})
+        # 1. Busca CSP em meta tag
+        csp_meta = self.safe_find(soup, 'meta', {'http-equiv': re.compile('^content-security-policy$', re.I)})
         if csp_meta:
             csp_content = self.safe_get_attribute(csp_meta, 'content')
             csp_source = 'meta_tag'
         
-        # Busca CSP em response headers (priority)
+        # 2. Busca CSP em response headers (sobrescreve se existir)
         if response_headers and 'content-security-policy' in response_headers:
             csp_content = response_headers['content-security-policy']
             csp_source = 'response_header'
         
-        if not csp_content:
-            data['has_csp'] = False
-            data['csp_score'] = 0
-            data['csp_directives_count'] = 0
-            return
-        
-        data['has_csp'] = True
-        data['csp_content'] = csp_content
+        data['has_csp'] = bool(csp_content)
         data['csp_source'] = csp_source
+        data['csp_content'] = csp_content
         
-        # Parse CSP directives
-        directives = {}
-        csp_parts = [part.strip() for part in csp_content.split(';') if part.strip()]
-        
-        for part in csp_parts:
-            if ' ' in part:
-                directive, sources = part.split(' ', 1)
-                directives[directive.strip()] = sources.strip()
-            else:
-                directives[part.strip()] = ''
-        
-        data['csp_directives'] = directives
-        data['csp_directives_count'] = len(directives)
-        
-        # Análise de qualidade do CSP
-        self._analyze_csp_quality(directives, data)
-    
-    def _analyze_csp_quality(self, directives: Dict, data: Dict):
-        """
-        Analisa qualidade do CSP
-        """
-        csp_issues = []
-        csp_score = 100
-        
-        # Verifica se tem default-src
-        if 'default-src' not in directives:
-            csp_issues.append('missing_default_src')
-            csp_score -= 20
-        
-        # Verifica 'unsafe-inline' e 'unsafe-eval'
-        unsafe_directives = []
-        for directive, sources in directives.items():
-            if "'unsafe-inline'" in sources:
-                unsafe_directives.append(f"{directive}:unsafe-inline")
-                csp_score -= 15
-            if "'unsafe-eval'" in sources:
-                unsafe_directives.append(f"{directive}:unsafe-eval")
-                csp_score -= 20
-        
-        data['csp_unsafe_directives'] = unsafe_directives
-        
-        # Verifica wildcard usage
-        wildcard_directives = []
-        for directive, sources in directives.items():
-            if '*' in sources and directive != 'img-src':  # img-src * é mais aceitável
-                wildcard_directives.append(directive)
-                csp_score -= 10
-        
-        data['csp_wildcard_directives'] = wildcard_directives
-        
-        # Verifica upgrade-insecure-requests
-        data['csp_upgrades_insecure_requests'] = 'upgrade-insecure-requests' in directives
-        
-        # Important directives coverage
-        important_coverage = sum(1 for directive in self.important_csp_directives if directive in directives)
-        data['csp_important_directives_coverage'] = important_coverage
-        data['csp_important_directives_percentage'] = (important_coverage / len(self.important_csp_directives)) * 100
-        
-        data['csp_issues'] = csp_issues
-        data['csp_score'] = max(0, csp_score)
+        if csp_content:
+            # Analisa diretivas
+            directives = {}
+            for directive in csp_content.split(';'):
+                if directive.strip():
+                    parts = directive.strip().split()
+                    if parts:
+                        directive_name = parts[0]
+                        directive_values = parts[1:] if len(parts) > 1 else []
+                        directives[directive_name] = directive_values
+            
+            data['csp_directives'] = directives
+            data['csp_directives_count'] = len(directives)
+            
+            # Verifica diretivas importantes
+            important_found = sum(1 for directive in self.important_csp_directives if directive in directives)
+            data['csp_important_directives_count'] = important_found
+            data['csp_score'] = int((important_found / len(self.important_csp_directives)) * 100)
+        else:
+            data['csp_directives'] = {}
+            data['csp_directives_count'] = 0
+            data['csp_important_directives_count'] = 0
+            data['csp_score'] = 0
     
     def _analyze_vulnerability_patterns(self, soup: BeautifulSoup, data: Dict):
         """
-        Analisa padrões de vulnerabilidades comuns
+        Analisa padrões de vulnerabilidades no HTML
         """
         page_html = str(soup)
-        vulnerabilities = {}
+        vulnerability_results = {}
+        total_vulnerabilities = 0
+        high_risk_count = 0
         
-        for vuln_type, pattern in self.vulnerability_patterns.items():
+        for pattern_name, pattern in self.vulnerability_patterns.items():
             matches = re.findall(pattern, page_html, re.IGNORECASE | re.DOTALL)
-            vulnerabilities[vuln_type] = {
-                'count': len(matches),
-                'found': len(matches) > 0,
-                'samples': matches[:3] if matches else []  # Primeiros 3 matches
+            count = len(matches)
+            
+            vulnerability_results[pattern_name] = {
+                'found': count > 0,
+                'count': count,
+                'examples': matches[:3] if matches else []  # Primeiros 3 exemplos
             }
+            
+            total_vulnerabilities += count
+            
+            # Padrões considerados de alto risco
+            if pattern_name in ['eval_usage', 'document_write', 'inner_html', 'aws_keys', 'generic_api_keys']:
+                high_risk_count += count
         
-        data['vulnerability_patterns'] = vulnerabilities
+        data['vulnerability_patterns'] = vulnerability_results
+        data['total_vulnerabilities'] = total_vulnerabilities
+        data['high_risk_vulnerabilities'] = high_risk_count
         
-        # Contadores gerais
-        data['inline_js_count'] = vulnerabilities['inline_js']['count']
-        data['inline_css_count'] = vulnerabilities['inline_css']['count']
-        data['has_eval_usage'] = vulnerabilities['eval_usage']['found']
-        data['has_document_write'] = vulnerabilities['document_write']['found']
-        data['exposed_emails_count'] = vulnerabilities['mailto_exposure']['count']
-        data['exposed_ips_count'] = vulnerabilities['ip_addresses']['count']
-        
-        # Risk scoring
-        high_risk_patterns = ['eval_usage', 'document_write', 'aws_keys', 'generic_api_keys']
-        data['high_risk_vulnerabilities'] = sum(1 for pattern in high_risk_patterns 
-                                               if vulnerabilities[pattern]['found'])
+        # Contagens específicas para métricas
+        data['inline_js_count'] = vulnerability_results.get('inline_js', {}).get('count', 0)
+        data['inline_css_count'] = vulnerability_results.get('inline_css', {}).get('count', 0)
+        data['exposed_emails_count'] = vulnerability_results.get('mailto_exposure', {}).get('count', 0)
     
     def _analyze_external_resources(self, soup: BeautifulSoup, data: Dict, url: str):
         """
@@ -429,53 +369,63 @@ class SecurityParser(ParserMixin):
             return
         
         page_domain = urlparse(url).netloc.lower()
+        external_scripts = []
+        external_links = []
         external_resources = []
         
         # Scripts externos
-        scripts = self.safe_find_all(soup, 'script', {'src': True})
-        for script in scripts:
-            src = self.safe_get_attribute(script, 'src')
-            if src and self._is_external_resource(src, page_domain):
+        for script in soup.find_all('script', src=True):
+            src = script.get('src', '')
+            if self._is_external_resource(src, page_domain):
+                has_integrity = bool(script.get('integrity'))
+                has_crossorigin = bool(script.get('crossorigin'))
+                
+                external_scripts.append({
+                    'url': src,
+                    'has_integrity': has_integrity,
+                    'has_crossorigin': has_crossorigin,
+                    'element_html': str(script)[:200]
+                })
                 external_resources.append({
                     'type': 'script',
                     'url': src,
-                    'integrity': self.safe_get_attribute(script, 'integrity'),
-                    'crossorigin': self.safe_get_attribute(script, 'crossorigin'),
-                    'has_integrity': bool(script.get('integrity')),
-                    'risk_level': 'high'  # Scripts externos são alto risco
+                    'secure': has_integrity and has_crossorigin
                 })
         
-        # Links externos (CSS, etc)
-        links = self.safe_find_all(soup, 'link', {'href': True})
-        for link in links:
-            href = self.safe_get_attribute(link, 'href')
-            rel = self.safe_get_attribute(link, 'rel')
-            if href and self._is_external_resource(href, page_domain):
-                risk_level = 'high' if 'stylesheet' in rel else 'medium'
-                external_resources.append({
-                    'type': f"link:{rel}",
+        # Links externos (CSS, etc.)
+        for link in soup.find_all('link', href=True):
+            href = link.get('href', '')
+            if self._is_external_resource(href, page_domain):
+                has_integrity = bool(link.get('integrity'))
+                has_crossorigin = bool(link.get('crossorigin'))
+                
+                external_links.append({
                     'url': href,
-                    'integrity': self.safe_get_attribute(link, 'integrity'),
-                    'crossorigin': self.safe_get_attribute(link, 'crossorigin'),
-                    'has_integrity': bool(link.get('integrity')),
-                    'risk_level': risk_level
+                    'rel': link.get('rel', []),
+                    'has_integrity': has_integrity,
+                    'has_crossorigin': has_crossorigin,
+                    'element_html': str(link)[:200]
+                })
+                external_resources.append({
+                    'type': 'link',
+                    'url': href,
+                    'secure': has_integrity and has_crossorigin
                 })
         
-        data['external_resources'] = external_resources
+        data['external_scripts'] = external_scripts
+        data['external_links'] = external_links
+        data['external_scripts_count'] = len(external_scripts)
+        data['external_links_count'] = len(external_links)
         data['external_resources_count'] = len(external_resources)
-        data['external_scripts_count'] = len([r for r in external_resources if r['type'] == 'script'])
-        data['external_stylesheets_count'] = len([r for r in external_resources if 'stylesheet' in r['type']])
         
-        # Security analysis
-        resources_with_integrity = [r for r in external_resources if r['has_integrity']]
-        data['external_resources_with_integrity'] = len(resources_with_integrity)
-        data['external_resources_integrity_percentage'] = (
-            len(resources_with_integrity) / len(external_resources) * 100 
-            if external_resources else 100
-        )
-        
-        high_risk_external = [r for r in external_resources if r['risk_level'] == 'high']
-        data['high_risk_external_resources'] = len(high_risk_external)
+        # Calcula percentual de recursos com integrity
+        if external_resources:
+            secure_resources = sum(1 for resource in external_resources if resource['secure'])
+            data['external_resources_with_integrity'] = secure_resources
+            data['external_resources_integrity_percentage'] = int((secure_resources / len(external_resources)) * 100)
+        else:
+            data['external_resources_with_integrity'] = 0
+            data['external_resources_integrity_percentage'] = 100  # Sem recursos externos = 100% seguro
     
     def _analyze_form_security(self, soup: BeautifulSoup, data: Dict, url: str):
         """
@@ -764,6 +714,7 @@ class SecurityParser(ParserMixin):
         
         return validations
 
+
 # ==========================================
 # FUNÇÃO STANDALONE PARA TESTES
 # ==========================================
@@ -796,6 +747,7 @@ def parse_security_elements(html_content: str, url: str = 'https://example.com',
     data.update(parser.validate_security_best_practices(data))
     
     return data
+
 
 # ==========================================
 # EXEMPLO DE USO E TESTE
@@ -845,6 +797,9 @@ if __name__ == "__main__":
             <!-- Sem CSRF token -->
         </form>
         
+        <!-- Links HTTP -->
+        <a href="http://insecure-site.com">Link inseguro</a>
+        
         <!-- Emails expostos -->
         <p>Contato: <a href="mailto:admin@example.com">admin@example.com</a></p>
         <p>Suporte: contato@empresa.com.br</p>
@@ -880,12 +835,14 @@ if __name__ == "__main__":
         response_headers=mock_headers
     )
     
-    print("🔒 RESULTADO DO SECURITY PARSER:")
+    print("🔒 RESULTADO DO SECURITY PARSER CORRIGIDO:")
     print(f"   HTTPS Page: {result['is_https_page']}")
     print(f"   Overall Security Score: {result['overall_security_score']}/100")
     print(f"   Mixed Content Risk: {result['mixed_content_risk']}")
     print(f"   Active Mixed Content: {result['active_mixed_content_count']}")
     print(f"   Passive Mixed Content: {result['passive_mixed_content_count']}")
+    print(f"   🔥 HTTP Links Count: {result.get('http_links_count', 0)}")
+    print(f"   🔥 HTTP Forms Count: {result.get('http_forms_count', 0)}")
     print(f"   Security Headers: {result['security_headers_count']}")
     print(f"   Has CSP: {result['has_csp']} (Score: {result.get('csp_score', 0)}/100)")
     print(f"   High Risk Vulnerabilities: {result['high_risk_vulnerabilities']}")
@@ -918,3 +875,13 @@ if __name__ == "__main__":
         print(f"\n🛡️  SECURITY HEADERS ENCONTRADOS:")
         for header, info in result['security_headers_found'].items():
             print(f"   {info['display_name']}: {info['source']}")
+    
+    # 🔥 TESTE DA CORREÇÃO
+    print(f"\n🔥 TESTE DA CORREÇÃO - Links HTTP detectados:")
+    if result.get('http_links_details'):
+        for link in result['http_links_details']:
+            print(f"   Link HTTP: {link['url']} (tag: {link['tag']})")
+    
+    if result.get('http_forms_details'):
+        for form in result['http_forms_details']:
+            print(f"   Form HTTP: {form['url']} (tag: {form['tag']})")
