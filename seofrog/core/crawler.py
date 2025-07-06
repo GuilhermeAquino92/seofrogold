@@ -192,7 +192,8 @@ class HTTPEngine:
                     try:
                         current_response = self.session.get(
                             next_url,
-                            timeout=self.config.timeout,
+                            timeout=self.config.timeout,from seofrog.parsers.links_parser import LinksParser
+
                             allow_redirects=False,
                             stream=True
                         )
