@@ -41,6 +41,31 @@ class LinksInternosRedirectSheet(BaseSheet):
             # Cria DataFrame dos redirects
             redirects_df = pd.DataFrame(redirects_data)
             
+            # Reordena colunas para melhor visualização
+            column_order = [
+                'From',           # URL de origem
+                'Anchor Text',    # Texto do link
+                'Href Original',  # href do HTML
+                'To Final',       # URL final após redirect
+                'Status Code',    # Código HTTP
+                'Status',         # Status texto
+                'Type',           # Tipo do link
+                'Follow',         # Follow/Nofollow
+                'Target',         # _blank, etc
+                'Rel',            # rel attribute
+                'Alt Text',       # Alt das imagens
+                'Redirected',     # True/False
+                'Link Path'       # XPath do elemento
+            ]
+            
+            # Garante que todas as colunas existam
+            for col in column_order:
+                if col not in redirects_df.columns:
+                    redirects_df[col] = ''
+            
+            # Reordena
+            redirects_df = redirects_df[column_order]
+            
             # Ordenar por 'From' para organização
             redirects_df = redirects_df.sort_values('From', ascending=True)
             
@@ -73,13 +98,13 @@ class LinksInternosRedirectSheet(BaseSheet):
                     if isinstance(internal_redirects, list):
                         for redirect_data in internal_redirects:
                             if isinstance(redirect_data, dict):
-                                # ✅ AQUI ESTÁ O CÓDIGO QUE ESTAVA FALTANDO:
+                                # ✅ NOMENCLATURA CORRIGIDA:
                                 redirect_export = {
                                     'Type': 'Hyperlink',
                                     'From': str(redirect_data.get('from_url', '')),
-                                    'To Original': str(redirect_data.get('to_original', '')),
+                                    'Href Original': str(redirect_data.get('to_original', '')),    # ✅ MUDOU
                                     'To Final': str(redirect_data.get('to_final', '')),
-                                    'Anchor': str(redirect_data.get('anchor_text', '')),
+                                    'Anchor Text': str(redirect_data.get('anchor_text', '')),      # ✅ MUDOU
                                     'Alt Text': str(redirect_data.get('alt_text', '')),
                                     'Follow': str(redirect_data.get('follow', True)),
                                     'Target': str(redirect_data.get('target', '')),
@@ -98,12 +123,13 @@ class LinksInternosRedirectSheet(BaseSheet):
                             if isinstance(parsed_redirects, list):
                                 for redirect_data in parsed_redirects:
                                     if isinstance(redirect_data, dict):
+                                        # ✅ NOMENCLATURA CORRIGIDA:
                                         redirect_export = {
                                             'Type': 'Hyperlink',
                                             'From': str(redirect_data.get('from_url', '')),
-                                            'To Original': str(redirect_data.get('to_original', '')),
+                                            'Href Original': str(redirect_data.get('to_original', '')),    # ✅ MUDOU
                                             'To Final': str(redirect_data.get('to_final', '')),
-                                            'Anchor': str(redirect_data.get('anchor_text', '')),
+                                            'Anchor Text': str(redirect_data.get('anchor_text', '')),      # ✅ MUDOU
                                             'Alt Text': str(redirect_data.get('alt_text', '')),
                                             'Follow': str(redirect_data.get('follow', True)),
                                             'Target': str(redirect_data.get('target', '')),
@@ -129,31 +155,35 @@ class LinksInternosRedirectSheet(BaseSheet):
             200: "OK",
             301: "Moved Permanently", 
             302: "Found",
+            303: "See Other",
             307: "Temporary Redirect",
             308: "Permanent Redirect",
             404: "Not Found",
-            500: "Internal Server Error"
+            403: "Forbidden", 
+            500: "Internal Server Error",
+            0: "Error"
         }
         return status_map.get(status_code, f"HTTP {status_code}")
     
     def _create_empty_dataframe(self) -> pd.DataFrame:
         """
         Cria DataFrame vazio com headers corretos (igual Screaming Frog)
+        ✅ NOMENCLATURA ATUALIZADA
         """
         columns = [
-            'Type',           # Tipo do link (Hyperlink)
             'From',           # URL de origem
-            'To Original',    # URL destino original
-            'To Final',       # URL destino final (após redirects)
-            'Anchor',         # Texto do anchor
-            'Alt Text',       # Alt text (para imagens)
+            'Anchor Text',    # Texto do link ✅ MUDOU
+            'Href Original',  # href do HTML ✅ MUDOU
+            'To Final',       # URL final após redirect
+            'Status Code',    # Status HTTP
+            'Status',         # Status texto
+            'Type',           # Tipo do link (Hyperlink)
             'Follow',         # Follow/Nofollow
             'Target',         # Target do link (_blank, etc.)
             'Rel',            # Rel attribute
-            'Status Code',    # Status HTTP
-            'Status',         # Status texto
+            'Alt Text',       # Alt text (para imagens)
             'Redirected',     # True/False
-            'Link Path'       # Caminho do link
+            'Link Path'       # XPath do elemento
         ]
         
         return pd.DataFrame(columns=columns)
