@@ -1,7 +1,7 @@
 """
 seofrog/exporters/sheets/links_internos_redirect.py
 Aba "Internal" - Links internos com redirects (igual Screaming Frog)
-🔧 VERSÃO CORRIGIDA COMPLETA: Acessa dados corretos com Anchor Text e Link Path
+🔧 VERSÃO CORRIGIDA COMPLETA: Fix para pandas array empty bug
 """
 
 import pandas as pd
@@ -14,7 +14,7 @@ class LinksInternosRedirectSheet(BaseSheet):
     """
     Aba "Internal" - Links internos com redirects
     Formato igual ao Screaming Frog: Type, From, To, Anchor Text, etc.
-    🔧 CORRIGIDO: Agora acessa dados corretos do LinksParser
+    🔧 CORRIGIDO: Fix para pandas empty array bug + dados corretos do LinksParser
     """
     
     def __init__(self):
@@ -41,31 +41,6 @@ class LinksInternosRedirectSheet(BaseSheet):
             # Cria DataFrame dos redirects
             redirects_df = pd.DataFrame(redirects_data)
             
-            # Reordena colunas para melhor visualização
-            column_order = [
-                'From',           # URL de origem
-                'Anchor Text',    # Texto do link
-                'Href Original',  # href do HTML
-                'To Final',       # URL final após redirect
-                'Status Code',    # Código HTTP
-                'Status',         # Status texto
-                'Type',           # Tipo do link
-                'Follow',         # Follow/Nofollow
-                'Target',         # _blank, etc
-                'Rel',            # rel attribute
-                'Alt Text',       # Alt das imagens
-                'Redirected',     # True/False
-                'Link Path'       # XPath do elemento
-            ]
-            
-            # Garante que todas as colunas existam
-            for col in column_order:
-                if col not in redirects_df.columns:
-                    redirects_df[col] = ''
-            
-            # Reordena
-            redirects_df = redirects_df[column_order]
-            
             # Ordenar por 'From' para organização
             redirects_df = redirects_df.sort_values('From', ascending=True)
             
@@ -83,65 +58,73 @@ class LinksInternosRedirectSheet(BaseSheet):
     
     def _collect_redirect_data(self, df: pd.DataFrame) -> List[Dict[str, str]]:
         """
-        🔧 VERSÃO CORRIGIDA COMPLETA - Acessa dados de redirects da coluna correta
+        🔧 VERSÃO CORRIGIDA COMPLETA - Fix para pandas empty array bug
         Agora pega os dados do LinksParser com Anchor Text e Link Path
         """
         redirects_data = []
         
         for _, row in df.iterrows():
             try:
-                # ✅ CORREÇÃO: Acessa dados do LinksParser via coluna 'internal_redirects_for_this_url'
-                if 'internal_redirects_for_this_url' in row and pd.notna(row['internal_redirects_for_this_url']):
-                    internal_redirects = row['internal_redirects_for_this_url']
-                    
-                    # Se é uma lista de dicts (dados do LinksParser)
-                    if isinstance(internal_redirects, list):
-                        for redirect_data in internal_redirects:
-                            if isinstance(redirect_data, dict):
-                                # ✅ NOMENCLATURA CORRIGIDA:
-                                redirect_export = {
-                                    'Type': 'Hyperlink',
-                                    'From': str(redirect_data.get('from_url', '')),
-                                    'Href Original': str(redirect_data.get('to_original', '')),    # ✅ MUDOU
-                                    'To Final': str(redirect_data.get('to_final', '')),
-                                    'Anchor Text': str(redirect_data.get('anchor_text', '')),      # ✅ MUDOU
-                                    'Alt Text': str(redirect_data.get('alt_text', '')),
-                                    'Follow': str(redirect_data.get('follow', True)),
-                                    'Target': str(redirect_data.get('target', '')),
-                                    'Rel': str(redirect_data.get('rel', '')),
-                                    'Status Code': str(redirect_data.get('status_code', '')),
-                                    'Status': self._get_status_text(redirect_data.get('status_code', 0)),
-                                    'Redirected': 'True',
-                                    'Link Path': str(redirect_data.get('link_path', ''))
-                                }
-                                redirects_data.append(redirect_export)
-                                
-                    # Se é string (dados serializados), tentar deserializar
-                    elif isinstance(internal_redirects, str):
-                        try:
-                            parsed_redirects = json.loads(internal_redirects)
-                            if isinstance(parsed_redirects, list):
-                                for redirect_data in parsed_redirects:
-                                    if isinstance(redirect_data, dict):
-                                        # ✅ NOMENCLATURA CORRIGIDA:
-                                        redirect_export = {
-                                            'Type': 'Hyperlink',
-                                            'From': str(redirect_data.get('from_url', '')),
-                                            'Href Original': str(redirect_data.get('to_original', '')),    # ✅ MUDOU
-                                            'To Final': str(redirect_data.get('to_final', '')),
-                                            'Anchor Text': str(redirect_data.get('anchor_text', '')),      # ✅ MUDOU
-                                            'Alt Text': str(redirect_data.get('alt_text', '')),
-                                            'Follow': str(redirect_data.get('follow', True)),
-                                            'Target': str(redirect_data.get('target', '')),
-                                            'Rel': str(redirect_data.get('rel', '')),
-                                            'Status Code': str(redirect_data.get('status_code', '')),
-                                            'Status': self._get_status_text(redirect_data.get('status_code', 0)),
-                                            'Redirected': 'True',
-                                            'Link Path': str(redirect_data.get('link_path', ''))
-                                        }
-                                        redirects_data.append(redirect_export)
-                        except json.JSONDecodeError:
-                            self.logger.warning(f"Erro deserializando redirects para URL: {row.get('url', 'N/A')}")
+                # ✅ CORREÇÃO: Verifica se coluna existe
+                if 'internal_redirects_for_this_url' not in row:
+                    continue
+                
+                internal_redirects = row['internal_redirects_for_this_url']
+                
+                # ✅ FIX PRINCIPAL: Verifica se não é NaN primeiro
+                if pd.isna(internal_redirects):
+                    continue
+                
+                # ✅ Se é lista, verifica se não está vazia ANTES de usar
+                if isinstance(internal_redirects, list):
+                    if len(internal_redirects) == 0:  # Lista vazia - skip
+                        continue
+                        
+                    for redirect_data in internal_redirects:
+                        if isinstance(redirect_data, dict):
+                            # ✅ AQUI ESTÁ O CÓDIGO QUE ESTAVA FALTANDO:
+                            redirect_export = {
+                                'Type': 'Hyperlink',
+                                'From': str(redirect_data.get('from_url', '')),
+                                'To Original': str(redirect_data.get('to_original', '')),
+                                'To Final': str(redirect_data.get('to_final', '')),
+                                'Anchor': str(redirect_data.get('anchor_text', '')),
+                                'Alt Text': str(redirect_data.get('alt_text', '')),
+                                'Follow': str(redirect_data.get('follow', True)),
+                                'Target': str(redirect_data.get('target', '')),
+                                'Rel': str(redirect_data.get('rel', '')),
+                                'Status Code': str(redirect_data.get('status_code', '')),
+                                'Status': self._get_status_text(redirect_data.get('status_code', 0)),
+                                'Redirected': 'True',
+                                'Link Path': str(redirect_data.get('link_path', ''))
+                            }
+                            redirects_data.append(redirect_export)
+                            
+                # ✅ Se é string (dados serializados), tentar deserializar
+                elif isinstance(internal_redirects, str) and internal_redirects.strip():
+                    try:
+                        parsed_redirects = json.loads(internal_redirects)
+                        if isinstance(parsed_redirects, list) and len(parsed_redirects) > 0:
+                            for redirect_data in parsed_redirects:
+                                if isinstance(redirect_data, dict):
+                                    redirect_export = {
+                                        'Type': 'Hyperlink',
+                                        'From': str(redirect_data.get('from_url', '')),
+                                        'To Original': str(redirect_data.get('to_original', '')),
+                                        'To Final': str(redirect_data.get('to_final', '')),
+                                        'Anchor': str(redirect_data.get('anchor_text', '')),
+                                        'Alt Text': str(redirect_data.get('alt_text', '')),
+                                        'Follow': str(redirect_data.get('follow', True)),
+                                        'Target': str(redirect_data.get('target', '')),
+                                        'Rel': str(redirect_data.get('rel', '')),
+                                        'Status Code': str(redirect_data.get('status_code', '')),
+                                        'Status': self._get_status_text(redirect_data.get('status_code', 0)),
+                                        'Redirected': 'True',
+                                        'Link Path': str(redirect_data.get('link_path', ''))
+                                    }
+                                    redirects_data.append(redirect_export)
+                    except json.JSONDecodeError:
+                        self.logger.warning(f"Erro deserializando redirects para URL: {row.get('url', 'N/A')}")
                             
             except Exception as e:
                 self.logger.error(f"Erro processando redirects: {e}")
@@ -155,35 +138,31 @@ class LinksInternosRedirectSheet(BaseSheet):
             200: "OK",
             301: "Moved Permanently", 
             302: "Found",
-            303: "See Other",
             307: "Temporary Redirect",
             308: "Permanent Redirect",
             404: "Not Found",
-            403: "Forbidden", 
-            500: "Internal Server Error",
-            0: "Error"
+            500: "Internal Server Error"
         }
         return status_map.get(status_code, f"HTTP {status_code}")
     
     def _create_empty_dataframe(self) -> pd.DataFrame:
         """
         Cria DataFrame vazio com headers corretos (igual Screaming Frog)
-        ✅ NOMENCLATURA ATUALIZADA
         """
         columns = [
-            'From',           # URL de origem
-            'Anchor Text',    # Texto do link ✅ MUDOU
-            'Href Original',  # href do HTML ✅ MUDOU
-            'To Final',       # URL final após redirect
-            'Status Code',    # Status HTTP
-            'Status',         # Status texto
             'Type',           # Tipo do link (Hyperlink)
+            'From',           # URL de origem
+            'To Original',    # URL destino original
+            'To Final',       # URL destino final (após redirects)
+            'Anchor',         # Texto do anchor
+            'Alt Text',       # Alt text (para imagens)
             'Follow',         # Follow/Nofollow
             'Target',         # Target do link (_blank, etc.)
             'Rel',            # Rel attribute
-            'Alt Text',       # Alt text (para imagens)
+            'Status Code',    # Status HTTP
+            'Status',         # Status texto
             'Redirected',     # True/False
-            'Link Path'       # XPath do elemento
+            'Link Path'       # Caminho do link
         ]
         
         return pd.DataFrame(columns=columns)
