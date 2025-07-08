@@ -508,8 +508,8 @@ class SEOFrog:
         self.security_parser = SecurityParser()
         self.content_parser = ContentParser()
         self.headings_parser = HeadingsParser()
-        self.links_parser = LinksParser()
-        
+        self.links_parser = LinksParser(enable_redirects=True, redirect_timeout=3)
+
         self.exporter = CSVExporter(config.output_dir)
         
         # Estado do crawl
