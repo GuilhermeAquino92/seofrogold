@@ -1,6 +1,6 @@
 """
 seofrog/parsers/links_parser.py
-Parser completo para links internos - REFATORADO + CORRIGIDO com compatibilidade total com aba "Internal"
+Parser completo para links internos - VERSÃO CORRIGIDA
 """
 
 import re
@@ -95,11 +95,20 @@ class LinksParser(ParserMixin):
         }
 
     def _check_and_store_redirect(self, page_url: str, link_url: str, link_data: Dict[str, str]) -> bool:
+        """
+        ✅ VERSÃO CORRIGIDA - Logs detalhados para debug de timeouts
+        """
         cache_hit = False
         try:
+            start_time = time.time()
             resolved_url, status_code = self._resolve(link_url)
+            elapsed = time.time() - start_time
+            
             if self.redirect_cache and self.redirect_cache.was_hit():
                 cache_hit = True
+
+            # 🆕 LOG DETALHADO para debug
+            self.logger.debug(f"🔗 Verificando redirect: {link_url} ({elapsed:.2f}s)")
 
             link_data['Status Code'] = str(status_code)
             link_data['Status'] = self._get_status_text(status_code)
@@ -107,6 +116,10 @@ class LinksParser(ParserMixin):
 
             if status_code in (301, 302, 303, 307, 308):
                 link_data['Redirected'] = 'True'
+                
+                # 🆕 LOG SUCCESS para confirmar detecção
+                self.logger.info(f"✅ TYPO REDIRECT detectado: {link_url} [{status_code}] → {resolved_url}")
+                
                 criticidade = 'Média' if urls_are_equivalent(link_url, resolved_url) else 'Alta'
                 redirect_data = {
                     'type': 'redirect',
@@ -125,11 +138,34 @@ class LinksParser(ParserMixin):
                 }
                 self.internal_redirect_links_by_url[page_url].append(redirect_data)
                 self.internal_redirect_links.append(redirect_data)
-        except Exception as e:
-            self.logger.debug(f"Erro verificando redirect {link_url}: {e}")
+                
+            elif status_code == 0:
+                # 🆕 LOG ERROR mais visível
+                self.logger.warning(f"❌ TIMEOUT/ERROR verificando redirect: {link_url}")
+                
+            else:
+                # 🆕 LOG para status não-redirect
+                self.logger.debug(f"📝 Sem redirect: {link_url} [{status_code}]")
+                
+        except requests.exceptions.Timeout:
+            # ✅ CORRIGIDO: except fora do try principal
+            self.logger.warning(f"⏰ TIMEOUT verificando redirect: {link_url} (>{self.redirect_timeout}s)")
             link_data['Status Code'] = '0'
-            link_data['Status'] = 'Error'
-        return cache_hit
+            link_data['Status'] = 'Timeout'
+            
+        except requests.exceptions.ConnectionError:
+            # ✅ CORRIGIDO: indentação correta
+            self.logger.warning(f"🔌 CONNECTION ERROR verificando redirect: {link_url}")
+            link_data['Status Code'] = '0'
+            link_data['Status'] = 'Connection Error'
+            
+        except Exception as e:
+            # ✅ CORRIGIDO: catch-all para outros erros
+            self.logger.warning(f"❌ ERRO verificando redirect {link_url}: {type(e).__name__}: {e}")
+            link_data['Status Code'] = '0'
+            link_data['Status'] = f'Error: {type(e).__name__}'
+            
+        return cache_hit  # ✅ CORRIGIDO: return fora dos except
 
     def _resolve(self, url: str) -> Tuple[str, int]:
         if self.redirect_cache:

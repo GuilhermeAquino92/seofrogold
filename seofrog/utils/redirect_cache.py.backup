@@ -56,10 +56,6 @@ class RedirectCache:
         self._saves = 0
         self._errors = 0
         
-        
-        # ✅ was_hit() implementation
-        self._last_was_hit = False
-        
         self.logger = get_logger('RedirectCache')
         
         # Inicialização e limpeza
@@ -88,14 +84,12 @@ class RedirectCache:
         cached_result = self._get_from_cache(cache_key)
         if cached_result:
             self._hits += 1
-            self._last_was_hit = True  # ✅ Cache hit
             resolved_url, status_code, _ = cached_result
             self.logger.debug(f"🎯 Cache HIT: {url} → {resolved_url} ({status_code})")
             return resolved_url, status_code
         
         # Cache miss - faz requisição HTTP
         self._misses += 1
-        self._last_was_hit = False  # ✅ Cache miss
         self.logger.debug(f"❌ Cache MISS: {url}")
         
         resolved_url, status_code = self._fetch_redirect(url, timeout, headers)
@@ -258,16 +252,6 @@ class RedirectCache:
             
         except Exception as e:
             self.logger.error(f"❌ Erro removendo entradas antigas: {e}")
-    def was_hit(self) -> bool:
-        """
-        Retorna se a última chamada get_or_fetch() foi cache hit
-        
-        Returns:
-            bool: True se último request foi cache hit, False se cache miss
-        """
-        return self._last_was_hit
-
-    
     
     def get_stats(self) -> Dict[str, Any]:
         """
@@ -291,8 +275,7 @@ class RedirectCache:
                 'saves': self._saves,
                 'errors': self._errors,
                 'ttl_hours': self.ttl_seconds / 3600,
-                'cache_file': str(self.cache_path),
-                'last_was_hit': self._last_was_hit
+                'cache_file': str(self.cache_path)
             }
     
     def clear_cache(self):
@@ -310,8 +293,6 @@ class RedirectCache:
                 self._saves = 0
                 self._errors = 0
                 
-                self._last_was_hit = False
-
                 self.logger.info("🗑️ Cache de redirects limpo")
                 
         except Exception as e:
