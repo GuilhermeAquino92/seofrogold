@@ -29,6 +29,7 @@ from .exceptions import (
     MemoryException, URLException
 )
 from seofrog.utils.logger import get_logger, CrawlProgressLogger
+from seofrog.services.redirect_service import get_redirect_service
 
 # 🔥 PARSERS MODULARES - REMOVIDO SEOParser
 from seofrog.parsers.meta_parser import MetaParser
@@ -160,7 +161,9 @@ class HTTPEngine:
             'Upgrade-Insecure-Requests': '1'
         })
         self.logger = get_logger('HTTPEngine')
-    
+   
+     
+   
     def fetch_url(self, url: str) -> Tuple[Optional[requests.Response], List[str], Dict]:
         """Fetch URL com retry inteligente e tracking de redirects"""
         redirect_chain = []
@@ -495,6 +498,11 @@ class SEOFrog:
         self.config = config
         self.logger = get_logger('SEOFrog')
         
+            # 🆕 RedirectService unificado
+        self.redirect_service = get_redirect_service()
+        
+        # Inicializa componentes (resto fica igual)
+        self.url_manager = None
         # Inicializa componentes
         self.url_manager = None
         self.http_engine = HTTPEngine(config)
@@ -568,10 +576,10 @@ class SEOFrog:
             sitemap_count = 0
             for sitemap_url in sitemaps[:3]:  # Máximo 3 sitemaps
                 sitemap_urls = sitemap_handler.parse_sitemap(sitemap_url)
-                seed_urls.extend(sitemap_urls[:1000])  # Máximo 1000 URLs por sitemap
+                seed_urls.extend(sitemap_urls[:10000])  # Máximo 1000 URLs por sitemap
                 sitemap_count += len(sitemap_urls)
                 
-                if sitemap_count > 5000:  # Limite total de URLs do sitemap
+                if sitemap_count > 50000:  # Limite total de URLs do sitemap
                     self.logger.info(f"Limite de URLs do sitemap atingido: {sitemap_count}")
                     break
         
@@ -602,7 +610,28 @@ class SEOFrog:
                     return None
             
             # Fetch da URL
-            response, redirect_chain, error_info = self.http_engine.fetch_url(url)
+            # 🆕 PRIMEIRO: verifica com RedirectService
+            self.logger.debug(f"Verificando status com RedirectService: {url}")
+            redirect_info = self.redirect_service.get_status_info(url)
+
+            # Se é erro grave, retorna sem fazer fetch
+            if redirect_info.status_code >= 400:
+                self.logger.debug(f"Status {redirect_info.status_code} detectado, pulando fetch")
+                return {
+                    'url': url,
+                    'status_code': redirect_info.status_code,
+                    'final_url': redirect_info.final_url,
+                    'error': f'HTTP {redirect_info.status_code}',
+                    'crawl_timestamp': datetime.now().isoformat(),
+                    'depth': depth,
+                    'redirect_type': redirect_info.redirect_type.value,
+                    'has_redirect': redirect_info.is_redirect
+                }
+
+            # 🆕 Se OK ou redirect, faz fetch da URL FINAL (já resolvida)
+            final_url_to_fetch = redirect_info.final_url
+            self.logger.debug(f"Fazendo fetch da URL final: {final_url_to_fetch}")
+            response, redirect_chain, error_info = self.http_engine.fetch_url(final_url_to_fetch)
             
             if response is None:
                 self.logger.debug(f"Falha no fetch: {url} - {error_info}")

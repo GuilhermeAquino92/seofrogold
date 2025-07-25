@@ -1,0 +1,291 @@
+"""
+seofrog/exporters/sheets/links_internos_redirect.py
+CORREÇÃO URGENTE - Garantir que planilha sempre seja criada
+"""
+
+import pandas as pd
+import json
+import requests
+from urllib.parse import urlparse
+from bs4 import BeautifulSoup
+from typing import List, Dict, Any
+from .base_sheet import BaseSheet
+from seofrog.utils.logger import get_logger
+
+class LinksInternosRedirectSheet(BaseSheet):
+    """
+    🎯 VERSÃO CORRIGIDA - SEMPRE CRIA PLANILHA
+    """
+
+    def __init__(self):
+        self.logger = get_logger('LinksInternosRedirectSheet')
+
+    def get_sheet_name(self) -> str:
+        return "Internal"
+
+    def create_sheet(self, df: pd.DataFrame, writer) -> None:
+        """
+        🔧 VERSÃO CORRIGIDA - SEMPRE GERA PLANILHA
+        """
+        try:
+            self.logger.info(f"🔍 Iniciando análise de redirects internos ({len(df)} URLs)")
+            
+            redirect_links = []
+
+            # 1. 🔍 IDENTIFICA URLs COM STATUS 3XX
+            if 'status_code' in df.columns:
+                redirect_urls = df[df['status_code'].isin([301, 302, 303, 307, 308])]
+                self.logger.info(f"📊 Encontradas {len(redirect_urls)} URLs com status 3xx")
+            else:
+                self.logger.warning("❌ Coluna 'status_code' não encontrada")
+                redirect_urls = pd.DataFrame()
+
+            # 2. 🔍 SE NÃO TEM 3XX, BUSCA NOS PARSERS (FALLBACK)
+            if len(redirect_urls) == 0:
+                self.logger.info("🔄 Buscando redirects nos dados dos parsers...")
+                redirect_links = self._extract_from_parsers(df)
+            else:
+                # Processa URLs com status 3xx
+                for _, row in redirect_urls.iterrows():
+                    original_url = row['url']
+                    final_url = row.get('final_url', original_url)
+                    status_code = row['status_code']
+                    
+                    # Busca âncoras que apontam para esta URL
+                    anchor_sources = self._find_anchor_sources_simple(df, original_url)
+                    
+                    # Classifica tipo de problema
+                    problem_type = self._classify_problem_type(original_url, final_url)
+                    
+                    # Só inclui se for problemático
+                    if self._is_problematic(problem_type):
+                        if anchor_sources:
+                            for source in anchor_sources:
+                                link_data = {
+                                    'Type': 'Internal Link (3xx)',
+                                    'From': source.get('from_page', 'Unknown'),
+                                    'To Original': original_url,
+                                    'To Final': final_url,
+                                    'Anchor': source.get('anchor_text', ''),
+                                    'Alt Text': '',
+                                    'Follow': 'True',
+                                    'Target': '',
+                                    'Rel': '',
+                                    'Status Code': str(status_code),
+                                    'Status': self._get_status_text(status_code),
+                                    'Redirected': 'True',
+                                    'Link Path': source.get('link_path', ''),
+                                    'Source': 'Crawler+Internal',
+                                    'Problem Type': problem_type
+                                }
+                                redirect_links.append(link_data)
+                        else:
+                            # URL problemática sem âncoras conhecidas
+                            link_data = {
+                                'Type': 'Direct URL (3xx)',
+                                'From': 'Direct/Sitemap',
+                                'To Original': original_url,
+                                'To Final': final_url,
+                                'Anchor': '',
+                                'Alt Text': '',
+                                'Follow': '',
+                                'Target': '',
+                                'Rel': '',
+                                'Status Code': str(status_code),
+                                'Status': self._get_status_text(status_code),
+                                'Redirected': 'True',
+                                'Link Path': '',
+                                'Source': 'Crawler',
+                                'Problem Type': problem_type
+                            }
+                            redirect_links.append(link_data)
+
+            # 3. 🎯 SEMPRE CRIA PLANILHA (mesmo se vazia)
+            if redirect_links:
+                # Remove duplicatas
+                links_df = pd.DataFrame(redirect_links)
+                links_df = links_df.drop_duplicates(subset=['To Original', 'To Final'], keep='first')
+
+                # Garante colunas esperadas
+                colunas = [
+                    'Type', 'From', 'To Original', 'To Final',
+                    'Anchor', 'Alt Text', 'Follow', 'Target', 'Rel',
+                    'Status Code', 'Status', 'Redirected', 'Link Path', 
+                    'Source', 'Problem Type'
+                ]
+                for col in colunas:
+                    if col not in links_df.columns:
+                        links_df[col] = ''
+
+                links_df = links_df[colunas]
+                links_df.to_excel(writer, sheet_name=self.get_sheet_name(), index=False)
+                
+                # Log sucesso
+                types = links_df['Problem Type'].value_counts() if 'Problem Type' in links_df.columns else {}
+                self.logger.info(f"✅ Aba Internal criada com {len(links_df)} redirects problemáticos")
+                self.logger.info(f"📊 Tipos: {dict(types)}")
+            else:
+                # Cria planilha vazia com mensagem
+                empty_df = pd.DataFrame([
+                    ['✅ Nenhum redirect problemático encontrado!'],
+                    ['O site não possui redirects internos que precisem de correção.'],
+                    ['Redirects HTTP→HTTPS são legítimos e foram ignorados.']
+                ], columns=['Status'])
+                empty_df.to_excel(writer, sheet_name=self.get_sheet_name(), index=False)
+                self.logger.info("✅ Aba Internal criada - Nenhum problema encontrado")
+
+        except Exception as e:
+            self.logger.error(f"❌ Erro criando aba Internal: {e}")
+            
+            # 🔧 SEMPRE CRIA PLANILHA DE ERRO
+            error_df = pd.DataFrame([
+                ['❌ Erro na análise de redirects internos'],
+                [f'Detalhes: {str(e)}'],
+                ['Verifique os logs para mais informações']
+            ], columns=['Erro'])
+            error_df.to_excel(writer, sheet_name=self.get_sheet_name(), index=False)
+
+    def _extract_from_parsers(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        🔄 FALLBACK: Extrai redirects dos dados dos parsers
+        """
+        redirect_links = []
+        
+        try:
+            for _, row in df.iterrows():
+                # Busca dados do LinksParser
+                links = row.get("internal_links_details", [])
+                if isinstance(links, str):
+                    try:
+                        links = json.loads(links)
+                    except:
+                        links = []
+                
+                if isinstance(links, list):
+                    for link in links:
+                        if isinstance(link, dict) and link.get('Redirected', '').lower() == 'true':
+                            redirect_links.append({
+                                'Type': 'Internal Link (Parser)',
+                                'From': link.get('From', ''),
+                                'To Original': link.get('To Original', ''),
+                                'To Final': link.get('To Final', ''),
+                                'Anchor': link.get('Anchor', ''),
+                                'Alt Text': link.get('Alt Text', ''),
+                                'Follow': link.get('Follow', 'True'),
+                                'Target': link.get('Target', ''),
+                                'Rel': link.get('Rel', ''),
+                                'Status Code': link.get('Status Code', ''),
+                                'Status': link.get('Status', ''),
+                                'Redirected': 'True',
+                                'Link Path': link.get('Link Path', ''),
+                                'Source': 'LinksParser',
+                                'Problem Type': 'Parser Detected'
+                            })
+                
+                # Busca dados do TechnicalParser
+                tech_redirects = row.get("redirects_found", [])
+                if isinstance(tech_redirects, str):
+                    try:
+                        tech_redirects = json.loads(tech_redirects)
+                    except:
+                        tech_redirects = []
+                
+                if isinstance(tech_redirects, list):
+                    for redirect in tech_redirects:
+                        if isinstance(redirect, dict):
+                            redirect_links.append({
+                                'Type': 'Internal Link (Technical)',
+                                'From': redirect.get('source_url', ''),
+                                'To Original': redirect.get('link_url', ''),
+                                'To Final': redirect.get('final_url', ''),
+                                'Anchor': '',
+                                'Alt Text': '',
+                                'Follow': 'True',
+                                'Target': '',
+                                'Rel': '',
+                                'Status Code': str(redirect.get('status_code', '')),
+                                'Status': self._get_status_text(redirect.get('status_code', 0)),
+                                'Redirected': 'True',
+                                'Link Path': '',
+                                'Source': 'TechnicalParser',
+                                'Problem Type': 'Technical Detected'
+                            })
+        except Exception as e:
+            self.logger.warning(f"Erro extraindo dados dos parsers: {e}")
+        
+        return redirect_links
+
+    def _find_anchor_sources_simple(self, df: pd.DataFrame, target_url: str) -> List[Dict[str, str]]:
+        """
+        🔍 VERSÃO SIMPLES: Busca âncoras nos dados já coletados (sem scraping adicional)
+        """
+        sources = []
+        target_clean = target_url.split('#')[0]
+        
+        try:
+            for _, row in df.iterrows():
+                internal_links = row.get('internal_links_details', [])
+                
+                if isinstance(internal_links, str):
+                    try:
+                        internal_links = json.loads(internal_links)
+                    except:
+                        continue
+                
+                if isinstance(internal_links, list):
+                    for link in internal_links:
+                        if isinstance(link, dict):
+                            link_target = link.get('To Original', '').split('#')[0]
+                            if link_target == target_clean:
+                                sources.append({
+                                    'from_page': row.get('url', ''),
+                                    'anchor_text': link.get('Anchor', ''),
+                                    'link_path': link.get('Link Path', '')
+                                })
+        except Exception as e:
+            self.logger.warning(f"Erro buscando âncoras: {e}")
+        
+        return sources[:10]  # Limita para evitar sobrecarga
+
+    def _classify_problem_type(self, original_url: str, final_url: str) -> str:
+        """🎯 Classifica tipo de problema"""
+        try:
+            parsed_orig = urlparse(original_url)
+            parsed_final = urlparse(final_url)
+            
+            if (parsed_orig.scheme == 'http' and parsed_final.scheme == 'https'):
+                return 'HTTP_to_HTTPS'
+            elif (parsed_orig.netloc == parsed_final.netloc and
+                  parsed_orig.path.lower() == parsed_final.path.lower() and
+                  parsed_orig.path != parsed_final.path):
+                return 'Capitalization_Fix'
+            elif (parsed_orig.netloc == parsed_final.netloc and
+                  len(parsed_orig.path) > len(parsed_final.path) and
+                  parsed_final.path in parsed_orig.path):
+                return 'URL_Truncated'
+            elif (parsed_orig.netloc == parsed_final.netloc and
+                  parsed_orig.path != parsed_final.path):
+                return 'Structure_Change'
+            elif parsed_orig.netloc != parsed_final.netloc:
+                return 'Domain_Change'
+            else:
+                return 'Other'
+        except Exception:
+            return 'Unknown'
+
+    def _is_problematic(self, problem_type: str) -> bool:
+        """🎯 Determina se é problemático"""
+        problematic_types = [
+            'Capitalization_Fix', 'URL_Truncated', 'Structure_Change',
+            'Domain_Change', 'Other', 'Unknown'
+        ]
+        return problem_type in problematic_types
+
+    def _get_status_text(self, status_code: int) -> str:
+        """Helper para converter status codes"""
+        status_map = {
+            200: 'OK', 301: 'Moved Permanently', 302: 'Found',
+            303: 'See Other', 307: 'Temporary Redirect', 308: 'Permanent Redirect',
+            404: 'Not Found', 403: 'Forbidden', 500: 'Internal Server Error', 0: 'Error'
+        }
+        return status_map.get(status_code, f'HTTP {status_code}')

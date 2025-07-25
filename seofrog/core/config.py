@@ -42,7 +42,7 @@ class CrawlConfig:
     export_format: str = "xlsx"
     
     # === PERFORMANCE ===
-    memory_limit_mb: int = 2048
+    memory_limit_mb: int = 4096
     enable_compression: bool = True
     chunk_size: int = 8192
     
