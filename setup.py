@@ -43,8 +43,6 @@ VERSION = get_version()
 # === REQUIREMENTS ===
 CORE_REQUIREMENTS = [
     "requests>=2.31.0",
-    "beautifulsoup4>=4.12.0", 
-    "lxml>=4.9.0",
     "pandas>=2.0.0",
     "urllib3>=2.0.0",
 ]

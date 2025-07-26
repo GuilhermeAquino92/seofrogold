@@ -138,10 +138,10 @@ def setup_logging(
     
     # === LOGGER PRINCIPAL ===
     main_logger = logging.getLogger('SEOFrog')
-    main_logger.info(f"🚀 SEOFrog logging iniciado")
-    main_logger.info(f"📁 Log file: {log_filepath}")
-    main_logger.info(f"📊 Log level: {level}")
-    main_logger.info(f"❌ Error log: {error_filepath}")
+    main_logger.info(f"[START] SEOFrog logging iniciado")
+    main_logger.info(f"[FILE] Log file: {log_filepath}")
+    main_logger.info(f"[LEVEL] Log level: {level}")
+    main_logger.info(f"[ERROR] Error log: {error_filepath}")
     
     return main_logger
 
@@ -186,7 +186,7 @@ class CrawlProgressLogger:
             
             # Log com informações extras
             self.logger.info(
-                f"📊 Progresso: {current_count:,}/{total_target:,} URLs ({percentage:.1f}%) | "
+                f"[PROGRESS] Progresso: {current_count:,}/{total_target:,} URLs ({percentage:.1f}%) | "
                 f"Queue: {queue_size:,} | Rate: {rate:.1f} URLs/s (atual: {interval_rate:.1f}) | "
                 f"ETA: {eta_formatted}",
                 extra={'url_count': current_count, 'rate': rate}
@@ -202,7 +202,7 @@ class CrawlProgressLogger:
         success_rate = (success_count / total_crawled * 100) if total_crawled > 0 else 0
         
         self.logger.info(
-            f"✅ Crawl finalizado! {total_crawled:,} URLs em {elapsed:.1f}s "
+            f"[FINISHED] Crawl finalizado! {total_crawled:,} URLs em {elapsed:.1f}s "
             f"(avg: {avg_rate:.1f} URLs/s) | Sucesso: {success_rate:.1f}% | "
             f"Erros: {error_count:,}"
         )
@@ -219,16 +219,16 @@ class LogContext:
     
     def __enter__(self):
         self.start_time = datetime.now()
-        self.logger.debug(f"🔄 Iniciando {self.context_name}")
+        self.logger.debug(f"[START] Iniciando {self.context_name}")
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         elapsed = (datetime.now() - self.start_time).total_seconds()
         
         if exc_type is None:
-            self.logger.debug(f"✅ {self.context_name} concluído em {elapsed:.2f}s")
+            self.logger.debug(f"[SUCCESS] {self.context_name} concluído em {elapsed:.2f}s")
         else:
-            self.logger.error(f"❌ {self.context_name} falhou em {elapsed:.2f}s: {exc_val}")
+            self.logger.error(f"[FAILED] {self.context_name} falhou em {elapsed:.2f}s: {exc_val}")
 
 # === DECORATORS ===
 
@@ -242,11 +242,11 @@ def log_execution_time(logger: Optional[logging.Logger] = None):
             try:
                 result = func(*args, **kwargs)
                 elapsed = (datetime.now() - start_time).total_seconds()
-                func_logger.debug(f"⚡ {func.__name__} executado em {elapsed:.3f}s")
+                func_logger.debug(f"[FAST] {func.__name__} executado em {elapsed:.3f}s")
                 return result
             except Exception as e:
                 elapsed = (datetime.now() - start_time).total_seconds()
-                func_logger.error(f"❌ {func.__name__} falhou em {elapsed:.3f}s: {e}")
+                func_logger.error(f"[FAILED] {func.__name__} falhou em {elapsed:.3f}s: {e}")
                 raise
         
         return wrapper

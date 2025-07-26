@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(python test:*)",
+      "Bash(python:*)",
+      "Bash(copy \"C:\\Users\\guilh\\Downloads\\SEOFROGOLD\\seofrog\\core\\exceptions.py\" \"C:\\Users\\guilh\\Downloads\\SEOFROGOLD\\seofrog\\exceptions.py\")",
+      "Bash(cp:*)",
+      "Bash(git checkout:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": []
+  }
+}

@@ -18,7 +18,9 @@ sys.path.insert(0, str(current_dir))
 
 from seofrog.cli import parse_cli_args
 from seofrog.core.config import CrawlConfig, create_config_from_dict
-from seofrog.core.crawler import SEOCrawler
+from seofrog.crawler import create_crawler, CrawlerConfig as ModularCrawlerConfig
+from typing import Dict
+import asyncio
 from seofrog.exporters.csv_exporter import CSVExporter
 from seofrog.exporters.excel_exporter import ExcelExporter
 from seofrog.utils.logger import setup_logging, get_logger
@@ -49,7 +51,7 @@ class CrawlRecoverySystem:
         signal.signal(signal.SIGINT, self._emergency_handler)
         signal.signal(signal.SIGTERM, self._emergency_handler)
         
-        self.logger.info(f"🛡️ Sistema Anti-Perda ativo: {self.backup_dir}")
+        self.logger.info(f"Sistema Anti-Perda ativo: {self.backup_dir}")
     
     def add_result(self, result_data: dict):
         """Adiciona resultado e auto-save"""
@@ -59,7 +61,7 @@ class CrawlRecoverySystem:
         # Auto-save a cada 100 URLs
         if self.save_counter % 100 == 0:
             self._save_progress("auto_save")
-            self.logger.info(f"💾 Auto-save: {self.save_counter} URLs processadas")
+            self.logger.info(f"Auto-save: {self.save_counter} URLs processadas")
     
     def _save_progress(self, save_type: str = "manual"):
         """Salva progresso atual"""
@@ -92,7 +94,7 @@ class CrawlRecoverySystem:
             self._cleanup_old_files()
             
         except Exception as e:
-            self.logger.error(f"❌ Erro salvando progresso: {e}")
+            self.logger.error(f"Erro salvando progresso: {e}")
     
     def _cleanup_old_files(self):
         """Remove arquivos antigos"""
@@ -107,7 +109,7 @@ class CrawlRecoverySystem:
     
     def _emergency_handler(self, signum, frame):
         """Handler para emergências (Ctrl+C, kill)"""
-        print(f"\n🚨 INTERRUPÇÃO DETECTADA! Salvando {len(self.saved_results)} resultados...")
+        print(f"\nINTERRUPCAO DETECTADA! Salvando {len(self.saved_results)} resultados...")
         
         if self.saved_results:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -116,21 +118,21 @@ class CrawlRecoverySystem:
             try:
                 df = pd.DataFrame(self.saved_results)
                 df.to_csv(emergency_file, index=False, encoding='utf-8')
-                print(f"✅ DADOS SALVOS EM: {emergency_file}")
-                print(f"📊 Total recuperado: {len(self.saved_results)} URLs")
+                print(f"DADOS SALVOS EM: {emergency_file}")
+                print(f"Total recuperado: {len(self.saved_results)} URLs")
             except Exception as e:
-                print(f"💥 ERRO CRÍTICO NO SALVAMENTO: {e}")
+                print(f"ERRO CRITICO NO SALVAMENTO: {e}")
         else:
-            print("ℹ️  Nenhum dado para salvar")
+            print("Nenhum dado para salvar")
         
-        print("🛑 Encerrando...")
+        print("Encerrando...")
         sys.exit(0)
     
     def finalize(self):
         """Finalização com save completo"""
         if self.saved_results:
             self._save_progress("final")
-            self.logger.info(f"✅ Crawl finalizado: {len(self.saved_results)} URLs processadas")
+            self.logger.info(f"Crawl finalizado: {len(self.saved_results)} URLs processadas")
         return self.saved_results
 
 
@@ -138,7 +140,7 @@ class CrawlRecoverySystem:
 # HANDLERS COM RECOVERY INTEGRADO
 # ==========================================
 
-def handle_crawl_mode_with_recovery(url: str, config_dict: Dict) -> int:
+async def handle_crawl_mode_with_recovery(url: str, config_dict: Dict) -> int:
     """Handler de crawl com sistema de recuperação integrado"""
     
     logger = get_logger('Main')
@@ -151,43 +153,62 @@ def handle_crawl_mode_with_recovery(url: str, config_dict: Dict) -> int:
         project_name = f"crawl_{url.replace('://', '_').replace('/', '_')}"
         recovery = CrawlRecoverySystem(project_name)
         
-        # Inicializa crawler
-        crawler = SEOCrawler(config)
+        # Converte para configuração modular
+        modular_config = ModularCrawlerConfig(
+            max_urls=config.max_urls,
+            max_depth=config.max_depth,
+            max_workers=config.max_workers,
+            timeout=config.timeout,
+            output_dir=config.output_dir,
+            output_format='csv'  # Always use CSV for recovery system
+        )
         
-        # ADICIONA PROTEÇÃO ANTI-LOOP
-        from seofrog.core.loop_protection import integrate_loop_protection
-        crawler = integrate_loop_protection(crawler, max_hours=12)
+        # Inicializa crawler modular
+        crawler = create_crawler(config=modular_config)
         
-        logger.info(f"🚀 Iniciando crawl com proteção anti-perda + anti-loop: {url}")
+        logger.info(f"Iniciando crawl com protecao anti-perda: {url}")
         
         # Verifica se há crawl anterior para recuperar
         recovery_files = list(recovery.backup_dir.glob("EMERGENCY_EXPORT_*.csv"))
         if recovery_files:
             latest_recovery = max(recovery_files, key=lambda x: x.stat().st_mtime)
-            response = input(f"\n🔄 Encontrado backup anterior: {latest_recovery.name}\nRecuperar dados? (y/n): ")
+            response = input(f"\nEncontrado backup anterior: {latest_recovery.name}\nRecuperar dados? (y/n): ")
             
             if response.lower() == 'y':
                 try:
                     recovered_df = pd.read_csv(latest_recovery)
-                    logger.info(f"📁 Carregados {len(recovered_df)} resultados do backup")
+                    logger.info(f"Carregados {len(recovered_df)} resultados do backup")
                     for _, row in recovered_df.iterrows():
                         recovery.add_result(row.to_dict())
-                    logger.info("✅ Backup recuperado com sucesso")
+                    logger.info("Backup recuperado com sucesso")
                 except Exception as e:
-                    logger.warning(f"⚠️ Erro recuperando backup: {e}")
+                    logger.warning(f"Erro recuperando backup: {e}")
         
         # Executa crawl
-        results = crawler.crawl(url)
+        stats = await crawler.crawl_site(url)
         
-        # Adiciona resultados ao recovery system
-        for result in results:
-            recovery.add_result(result)
+        # Lê resultados do arquivo CSV criado pelo crawler
+        output_file = stats.get('saver_stats', {}).get('output_file')
+        results = []
+        
+        if output_file and os.path.exists(output_file):
+            try:
+                df = pd.read_csv(output_file)
+                for _, row in df.iterrows():
+                    result_dict = row.to_dict()
+                    results.append(result_dict)
+                    recovery.add_result(result_dict)
+                logger.info(f"Carregados {len(results)} resultados do arquivo CSV")
+            except Exception as e:
+                logger.warning(f"Erro lendo arquivo CSV: {e}")
+        else:
+            logger.warning("Arquivo de resultados nao encontrado")
         
         # Finaliza recovery e obtém resultados completos
         final_results = recovery.finalize()
         
         if not final_results:
-            logger.warning("⚠️ Nenhum resultado obtido")
+            logger.warning("Nenhum resultado obtido")
             return 1
         
         # Exporta resultados
@@ -198,32 +219,32 @@ def handle_crawl_mode_with_recovery(url: str, config_dict: Dict) -> int:
             output_file = exporter.export_to_excel(final_results, url)
         else:
             exporter = CSVExporter(config.output_dir)
-            output_file = exporter.export_crawl_data(final_results, url)
+            output_file = exporter.export_results(final_results)
         
         # Estatísticas finais
         crawl_time = datetime.now() - recovery.start_time
-        logger.info(f"✅ Crawl concluído em {crawl_time}")
-        logger.info(f"📊 URLs processadas: {len(final_results):,}")
-        logger.info(f"💾 Arquivo exportado: {output_file}")
-        logger.info(f"🛡️ Backups salvos em: {recovery.backup_dir}")
+        logger.info(f"Crawl concluido em {crawl_time}")
+        logger.info(f"URLs processadas: {len(final_results):,}")
+        logger.info(f"Arquivo exportado: {output_file}")
+        logger.info(f"Backups salvos em: {recovery.backup_dir}")
         
         return 0
         
     except KeyboardInterrupt:
-        logger.info("⚠️ Crawl interrompido pelo usuário")
+        logger.info("Crawl interrompido pelo usuario")
         return 0
     except ImportError as e:
-        logger.error(f"❌ Erro de import: {e}")
-        logger.error("💡 Instale as dependências: pip install beautifulsoup4 lxml pandas requests")
+        logger.error(f"Erro de import: {e}")
+        logger.error("Instale as dependencias: pip install lxml pandas requests aiohttp")
         return 1
     except ConfigException as e:
-        logger.error(f"❌ Erro de configuração: {e}")
+        logger.error(f"Erro de configuracao: {e}")
         return 1
     except SEOFrogException as e:
-        logger.error(f"❌ Erro SEOFrog: {e}")
+        logger.error(f"Erro SEOFrog: {e}")
         return 1
     except Exception as e:
-        logger.error(f"❌ Erro inesperado: {e}")
+        logger.error(f"Erro inesperado: {e}")
         return 1
 
 
@@ -238,17 +259,17 @@ def handle_analyze_mode(analyze_file: str) -> int:
         result = analyzer.analyze_file(analyze_file)
         
         if result:
-            logger.info(f"✅ Análise concluída: {result}")
+            logger.info(f"Analise concluida: {result}")
             return 0
         else:
-            logger.error("❌ Falha na análise do arquivo")
+            logger.error("Falha na analise do arquivo")
             return 1
             
     except ImportError as e:
-        logger.error(f"❌ Erro de import: {e}")
+        logger.error(f"Erro de import: {e}")
         return 1
     except Exception as e:
-        logger.error(f"❌ Erro na análise: {e}")
+        logger.error(f"Erro na analise: {e}")
         return 1
 
 
@@ -278,19 +299,19 @@ def main() -> int:
         
         # Se é crawl normal - USA VERSÃO COM RECOVERY
         if url:
-            return handle_crawl_mode_with_recovery(url, config_dict)
+            return asyncio.run(handle_crawl_mode_with_recovery(url, config_dict))
         
         # Não deveria chegar aqui
-        print("❌ Erro: Nenhuma ação válida especificada")
+        print("Erro: Nenhuma acao valida especificada")
         return 1
         
     except KeyboardInterrupt:
-        print("\n⚠️ Operação interrompida pelo usuário")
+        print("\nOperacao interrompida pelo usuario")
         return 0
     except SystemExit as e:
         return e.code if hasattr(e, 'code') else 0
     except Exception as e:
-        print(f"\n❌ Erro crítico no main: {e}")
+        print(f"\nErro critico no main: {e}")
         return 1
 
 
