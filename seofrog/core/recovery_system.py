@@ -196,7 +196,7 @@ class CrawlerRecoverySystem:
 Crawler Enhanced com Sistema de Recuperação
 """
 
-from .crawler import SEOCrawler
+from .crawler_old import SEOCrawler
 from .recovery_system import CrawlerRecoverySystem
 import signal
 import sys

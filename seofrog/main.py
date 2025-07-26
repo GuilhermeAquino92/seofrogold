@@ -17,8 +17,8 @@ current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
 from seofrog.cli import parse_cli_args
-from seofrog.config import CrawlConfig, create_config_from_dict
-from seofrog.core.crawler import SEOCrawler  
+from seofrog.core.config import CrawlConfig, create_config_from_dict
+from seofrog.core.crawler import SEOCrawler
 from seofrog.exporters.csv_exporter import CSVExporter
 from seofrog.exporters.excel_exporter import ExcelExporter
 from seofrog.utils.logger import setup_logging, get_logger

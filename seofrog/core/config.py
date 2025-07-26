@@ -98,9 +98,19 @@ class CrawlConfig:
             'crawl_images': self.crawl_images,
             'crawl_css': self.crawl_css,
             'crawl_js': self.crawl_js,
+            'crawl_pdf': self.crawl_pdf,
             'user_agent': self.user_agent,
+            'retry_attempts': self.retry_attempts,
+            'retry_backoff': self.retry_backoff,
+            'connection_pool_size': self.connection_pool_size,
             'output_dir': self.output_dir,
-            'log_level': self.log_level
+            'log_level': self.log_level,
+            'export_format': self.export_format,
+            'memory_limit_mb': self.memory_limit_mb,
+            'enable_compression': self.enable_compression,
+            'chunk_size': self.chunk_size,
+            'custom_headers': self.custom_headers,
+            'ignore_extensions': self.ignore_extensions
         }
 
 @dataclass 
@@ -120,58 +130,81 @@ class ProfileConfig:
                 config=CrawlConfig(
                     max_urls=100,
                     max_depth=3,
-                    delay=0.1,
-                    timeout=15,
-                    max_workers=4
+                    delay=0.5,
+                    max_workers=2,
+                    timeout=15
                 )
             ),
-            
             'standard': cls(
-                name='standard', 
-                description='Crawl padrão - 10k URLs, profundidade 10',
+                name='standard',
+                description='Crawl padrão - 5K URLs, profundidade 10',
                 config=CrawlConfig(
-                    max_urls=10000,
+                    max_urls=5000,
                     max_depth=10,
-                    delay=0.25,
-                    timeout=30,
-                    max_workers=os.cpu_count() or 8
+                    delay=0.3,
+                    max_workers=4,
+                    timeout=20
                 )
             ),
-            
             'deep': cls(
                 name='deep',
-                description='Crawl profundo - 500k URLs, profundidade 50',
+                description='Crawl profundo - 50K URLs, profundidade 20',
+                config=CrawlConfig(
+                    max_urls=50000,
+                    max_depth=20,
+                    delay=0.2,
+                    max_workers=8,
+                    timeout=30,
+                    crawl_images=True
+                )
+            ),
+            'enterprise': cls(
+                name='enterprise',
+                description='Crawl enterprise - 500K URLs, profundidade 50',
                 config=CrawlConfig(
                     max_urls=500000,
                     max_depth=50,
-                    delay=0.25,
-                    timeout=30,
-                    max_workers=os.cpu_count() or 8
-                )
-            ),
-            
-            'safe': cls(
-                name='safe',
-                description='Modo polite - delay alto, respeitoso',
-                config=CrawlConfig(
-                    max_urls=5000,
-                    max_depth=8,
-                    delay=1.0,
+                    delay=0.1,
+                    max_workers=12,
                     timeout=45,
-                    max_workers=4,
+                    crawl_images=True,
+                    crawl_css=True,
                     retry_attempts=5
                 )
             ),
-            
-            'aggressive': cls(
-                name='aggressive',
-                description='Modo agressivo - alta velocidade',
+            'ecommerce': cls(
+                name='ecommerce',
+                description='E-commerce otimizado - produtos + imagens',
                 config=CrawlConfig(
-                    max_urls=100000,
-                    max_depth=20,
-                    delay=0.1,
-                    timeout=20,
-                    max_workers=(os.cpu_count() or 8) * 2,
+                    max_urls=25000,
+                    max_depth=15,
+                    delay=0.3,
+                    max_workers=6,
+                    timeout=25,
+                    crawl_images=True,
+                    crawl_pdf=True
+                )
+            ),
+            'blog': cls(
+                name='blog',
+                description='Blog/conteúdo - posts + categorias',
+                config=CrawlConfig(
+                    max_urls=10000,
+                    max_depth=25,
+                    delay=0.2,
+                    max_workers=4,
+                    timeout=20
+                )
+            ),
+            'safe': cls(
+                name='safe',
+                description='Crawl conservador - baixo impacto no servidor',
+                config=CrawlConfig(
+                    max_urls=1000,
+                    max_depth=5,
+                    delay=1.0,
+                    max_workers=2,
+                    timeout=30,
                     retry_attempts=2
                 )
             )
@@ -213,6 +246,30 @@ def create_auto_config(**overrides) -> CrawlConfig:
     
     base_config.update(overrides)
     return CrawlConfig(**base_config)
+
+def create_config_from_dict(config_dict: Dict[str, Any]) -> CrawlConfig:
+    """
+    🔧 Cria CrawlConfig a partir de dicionário
+    Função que estava faltante no main.py
+    """
+    try:
+        # Chaves válidas para CrawlConfig
+        valid_keys = {
+            'max_urls', 'max_depth', 'delay', 'timeout', 'max_workers', 'max_redirects',
+            'respect_robots', 'follow_redirects', 'crawl_images', 'crawl_css', 'crawl_js', 'crawl_pdf',
+            'user_agent', 'retry_attempts', 'retry_backoff', 'connection_pool_size',
+            'output_dir', 'log_level', 'export_format', 'memory_limit_mb', 'enable_compression',
+            'chunk_size', 'custom_headers', 'ignore_extensions'
+        }
+        
+        # Filtra apenas chaves válidas
+        filtered_config = {k: v for k, v in config_dict.items() if k in valid_keys}
+        
+        # Cria CrawlConfig
+        return CrawlConfig(**filtered_config)
+        
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Erro criando CrawlConfig: {e}")
 
 # === CONSTANTS ===
 

@@ -1,4 +1,13 @@
-from .url_normalizer import URLNormalizer, normalize_url
-from .logger import get_logger, setup_logging
+"""
+SEOFrog v0.3 - Utilities Package
+"""
 
-__all__ = ['URLNormalizer', 'normalize_url', 'get_logger', 'setup_logging']
+from .models import CrawlResult, CrawlConfig, create_crawl_result, create_error_result, create_result_from_export_data
+
+__all__ = [
+    'CrawlResult',
+    'CrawlConfig', 
+    'create_crawl_result',
+    'create_error_result',
+    'create_result_from_export_data',
+]
