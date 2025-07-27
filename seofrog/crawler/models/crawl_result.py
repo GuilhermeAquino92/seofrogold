@@ -25,6 +25,7 @@ class CrawlResult:
     load_time: float = 0.0
     depth: int = 0
     crawl_timestamp: str = ""
+    html_content: str = ""
     redirect_info: Dict = None
     errors: List[str] = None
     

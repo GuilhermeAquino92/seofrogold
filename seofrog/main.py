@@ -214,9 +214,9 @@ async def handle_crawl_mode_with_recovery(url: str, config_dict: Dict) -> int:
         # Exporta resultados
         export_format = config_dict.get('export_format', 'csv')
         
-        if export_format == 'excel':
+        if export_format in ['excel', 'xlsx']:
             exporter = ExcelExporter(config.output_dir)
-            output_file = exporter.export_to_excel(final_results, url)
+            output_file = exporter.export_results(final_results)
         else:
             exporter = CSVExporter(config.output_dir)
             output_file = exporter.export_results(final_results)

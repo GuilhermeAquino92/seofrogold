@@ -20,6 +20,9 @@ class ProblemasImagensSheet(BaseSheet):
         Cria aba de problemas de imagens - IDÊNTICO ao método original
         """
         try:
+            # Filtra apenas páginas com status 200 - não faz sentido analisar imagens em 404s
+            df = self._filter_successful_pages(df)
+            
             image_issues = []
             
             # URLs com imagens sem ALT (exatamente como no original)

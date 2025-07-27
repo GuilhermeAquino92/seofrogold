@@ -246,3 +246,31 @@ class BaseSheet(ABC):
         if total == 0:
             return '0.0%'
         return f"{(value / total * 100):.1f}%"
+    
+    def _filter_successful_pages(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Filtra apenas páginas com status_code 200 (sucessos)
+        Páginas com 404, 500, etc não devem ser analisadas para conteúdo
+        
+        Args:
+            df: DataFrame com dados do crawl
+            
+        Returns:
+            DataFrame filtrado apenas com páginas 200
+        """
+        if 'status_code' not in df.columns:
+            self.logger.warning(f"Coluna 'status_code' não encontrada em {self.get_sheet_name()}")
+            return df
+        
+        try:
+            successful_pages = df[df['status_code'] == 200].copy()
+            filtered_count = len(df) - len(successful_pages)
+            
+            if filtered_count > 0:
+                self.logger.debug(f"Filtradas {filtered_count} páginas com erro (não-200) em {self.get_sheet_name()}")
+            
+            return successful_pages
+            
+        except Exception as e:
+            self.logger.warning(f"Erro filtrando páginas sucessos em {self.get_sheet_name()}: {e}")
+            return df

@@ -20,6 +20,9 @@ class ProblemasTitulosSheet(BaseSheet):
         Cria aba de problemas de títulos - IDÊNTICO ao método original
         """
         try:
+            # Filtra apenas páginas com status 200 - não faz sentido analisar títulos em 404s
+            df = self._filter_successful_pages(df)
+            
             title_issues = []
             
             # URLs sem título (verificação segura - exatamente como no original)

@@ -20,6 +20,9 @@ class H1H2AusentesSheet(BaseSheet):
         Cria aba específica para H1/H2 ausentes - IDÊNTICO ao método original
         """
         try:
+            # Filtra apenas páginas com status 200 - não faz sentido analisar H1/H2 em 404s
+            df = self._filter_successful_pages(df)
+            
             h1_h2_issues = []
             
             # URLs sem H1 (crítico) - exatamente como no original

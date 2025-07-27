@@ -143,7 +143,9 @@ class AsyncCrawlOrchestrator:
             import re
             from urllib.parse import urljoin, urlparse
             
-            base_domain = urlparse(base_url).netloc
+            # Use the final URL (after redirects) to determine the domain
+            final_url = str(response.url)
+            base_domain = urlparse(final_url).netloc
             
             # Extrai todos os links usando regex
             href_pattern = r'<a[^>]*href=["\']([^"\']*)["\'][^>]*>'
@@ -159,7 +161,7 @@ class AsyncCrawlOrchestrator:
                 
                 # Resolve URL relativa
                 try:
-                    absolute_url = urljoin(base_url, href)
+                    absolute_url = urljoin(final_url, href)
                     
                     # Filtra apenas links do mesmo domínio
                     if urlparse(absolute_url).netloc == base_domain:
@@ -177,7 +179,9 @@ class AsyncCrawlOrchestrator:
     
     def _is_html_response(self, response) -> bool:
         """Verifica se a resposta é HTML"""
-        content_type = response.headers.get('content-type', '').lower()
+        # Try both lowercase and title case for compatibility
+        content_type = response.headers.get('content-type', '') or response.headers.get('Content-Type', '')
+        content_type = content_type.lower()
         return 'text/html' in content_type
     
     async def _shutdown(self):

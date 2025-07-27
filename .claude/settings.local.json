@@ -7,7 +7,11 @@
       "Bash(copy \"C:\\Users\\guilh\\Downloads\\SEOFROGOLD\\seofrog\\core\\exceptions.py\" \"C:\\Users\\guilh\\Downloads\\SEOFROGOLD\\seofrog\\exceptions.py\")",
       "Bash(cp:*)",
       "Bash(git checkout:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(dir:*)",
+      "Bash(ls:*)",
+      "Bash(del test_regex.py)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

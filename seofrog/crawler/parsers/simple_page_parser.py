@@ -59,12 +59,17 @@ class SimplePageParser:
     
     def _is_html_content(self, response) -> bool:
         """Verifica se o conteúdo é HTML"""
-        content_type = response.headers.get('content-type', '').lower()
+        # Try both lowercase and title case for compatibility
+        content_type = response.headers.get('content-type', '') or response.headers.get('Content-Type', '')
+        content_type = content_type.lower()
         return 'text/html' in content_type
     
     def _extract_page_data_simple(self, html_text: str, result: CrawlResult, original_url: str):
         """Extrai dados da página usando regex simples (sem BeautifulSoup)"""
         import re
+        
+        # Salva HTML content para análise DOM posterior
+        result.html_content = html_text
         
         # Title - busca simples
         title_match = re.search(r'<title[^>]*>(.*?)</title>', html_text, re.IGNORECASE | re.DOTALL)

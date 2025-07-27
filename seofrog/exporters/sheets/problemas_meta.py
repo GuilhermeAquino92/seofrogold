@@ -20,6 +20,9 @@ class ProblemasMetaSheet(BaseSheet):
         Cria aba de problemas de meta description - IDÊNTICO ao método original
         """
         try:
+            # Filtra apenas páginas com status 200 - não faz sentido analisar meta em 404s
+            df = self._filter_successful_pages(df)
+            
             meta_issues = []
             
             # URLs sem meta description (exatamente como no original)
