@@ -11,7 +11,20 @@
       "Bash(dir:*)",
       "Bash(ls:*)",
       "Bash(del test_regex.py)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(pip install:*)",
+      "Bash(for file in *.py)",
+      "Bash(do if grep -q \"logger\\.error.*{e}\" \"$file\")",
+      "Bash(then echo \"Corrigindo $file\")",
+      "Bash(sed:*)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(findstr:*)",
+      "Bash(do if grep -q \"data\\[.*\\] = str(e)\" \"$file\")",
+      "Bash(then echo \"Corrigindo data assignment em $file\")",
+      "Bash(timeout 30 tail -f C:UsersguilhDownloadsSEOFROGOLDseofrog_outputcrawl_log_*.log)",
+      "Bash(find:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   }

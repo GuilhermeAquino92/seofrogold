@@ -101,7 +101,10 @@ class ParserMixin:
                 text = text.get_text()
             
             # Converte para string se necessário
-            text = str(text)
+            try:
+                text = str(text).encode('utf-8', errors='replace').decode('utf-8')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                text = str(text)
             
             # Remove espaços extras, tabs, quebras de linha
             cleaned = re.sub(r'\s+', ' ', text.strip())

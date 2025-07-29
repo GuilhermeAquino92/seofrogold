@@ -50,14 +50,29 @@ class SEOFrogFormatter(logging.Formatter):
         if hasattr(record, 'thread') and record.thread:
             thread_info = f"[T{record.thread}] "
         
-        # Message
-        message = record.getMessage()
+        # Message with safe encoding
+        try:
+            message = record.getMessage()
+            # Garante que a mensagem é UTF-8 válida
+            if isinstance(message, str):
+                message = message.encode('utf-8', errors='replace').decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            message = str(record.msg).encode('utf-8', errors='replace').decode('utf-8')
         
         # Exception info se houver
         if record.exc_info:
-            message += f"\n{self.formatException(record.exc_info)}"
+            try:
+                exc_text = self.formatException(record.exc_info)
+                exc_text = exc_text.encode('utf-8', errors='replace').decode('utf-8')
+                message += f"\n{exc_text}"
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                message += "\n[Exception info encoding error]"
         
-        return f"{timestamp} | {level} | {logger_name} | {thread_info}{message}"
+        try:
+            final_message = f"{timestamp} | {level} | {logger_name} | {thread_info}{message}"
+            return final_message.encode('utf-8', errors='replace').decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return f"{timestamp} | ERROR | Logger encoding issue"
 
 class PerformanceFilter(logging.Filter):
     """Filtro para logs de performance"""

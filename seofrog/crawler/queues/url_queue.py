@@ -14,7 +14,7 @@ class URLQueue:
     Controla depth, duplicatas e priorização
     """
     
-    def __init__(self, max_depth: int = 3, max_urls: int = 1000):
+    def __init__(self, max_depth: int = 6, max_urls: int = 20000):
         self.queue = asyncio.Queue()
         self.seen_urls: Set[str] = set()
         self.processed_urls: Set[str] = set()
@@ -28,6 +28,7 @@ class URLQueue:
         self.urls_processed = 0
         self.urls_skipped_depth = 0
         self.urls_skipped_duplicate = 0
+        self.urls_by_depth: Dict[int, int] = {}
     
     async def add_url(self, url: str, depth: int = 0) -> bool:
         """
@@ -57,6 +58,10 @@ class URLQueue:
             self.seen_urls.add(normalized_url)
             await self.queue.put((normalized_url, depth))
             self.urls_added += 1
+            
+            # Track URLs by depth
+            self.urls_by_depth[depth] = self.urls_by_depth.get(depth, 0) + 1
+            
             self.logger.debug(f"URL added (depth {depth}): {url}")
             return True
     
@@ -73,17 +78,60 @@ class URLQueue:
             return None
     
     def _normalize_url(self, url: str) -> str:
-        """Normalização básica de URL"""
-        # Remove fragment
-        if '#' in url:
-            url = url.split('#')[0]
-        # Remove trailing slash duplo
-        if url.endswith('//'):
-            url = url[:-1]
-        # Remove trailing slash simples (exceto para root)
-        if url.endswith('/') and url.count('/') > 2:
-            url = url[:-1]
-        return url.lower()
+        """Normalização avançada de URL baseada no crawler_old"""
+        try:
+            from urllib.parse import urlparse, urlunparse, parse_qs, urlencode, unquote
+            
+            # Decode percent encoding
+            url = unquote(url)
+            parsed = urlparse(url.lower().strip())
+            
+            # Remove fragment
+            parsed = parsed._replace(fragment='')
+            
+            # Normaliza path
+            path = parsed.path.rstrip('/')
+            if not path or path == '':
+                path = '/'
+            
+            # Remove trailing slashes exceto root
+            if path != '/' and path.endswith('/'):
+                path = path[:-1]
+            
+            # Normaliza query parameters
+            if parsed.query:
+                params = parse_qs(parsed.query, keep_blank_values=False)
+                
+                # Remove parâmetros de tracking comuns
+                tracking_params = {
+                    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+                    'gclid', 'fbclid', 'msclkid', 'twclid', '_ga', '_gl', 'ref', 'source',
+                    'campaign_id', 'ad_id', 'adset_id', 'campaign_name'
+                }
+                
+                filtered_params = {k: v for k, v in params.items() 
+                                 if k.lower() not in tracking_params}
+                
+                # Ordena parâmetros para consistência
+                if filtered_params:
+                    sorted_params = sorted(filtered_params.items())
+                    query = urlencode(sorted_params, doseq=True)
+                else:
+                    query = ''
+            else:
+                query = ''
+            
+            # Força HTTPS se não especificado
+            scheme = parsed.scheme or 'https'
+            
+            # Reconstrói URL normalizada
+            normalized = urlunparse((scheme, parsed.netloc, path, '', query, ''))
+            
+            return normalized
+            
+        except Exception as e:
+            self.logger.debug(f"Erro normalizando URL {url}: {e}")
+            return url.lower().strip()
     
     async def is_empty(self) -> bool:
         """Verifica se fila está vazia"""
@@ -113,7 +161,8 @@ class URLQueue:
             'skipped_depth': self.urls_skipped_depth,
             'skipped_duplicate': self.urls_skipped_duplicate,
             'max_depth': self.max_depth,
-            'max_urls': self.max_urls
+            'max_urls': self.max_urls,
+            'urls_by_depth': dict(self.urls_by_depth)
         }
     
     async def clear(self):
@@ -133,6 +182,7 @@ class URLQueue:
             self.urls_processed = 0
             self.urls_skipped_depth = 0
             self.urls_skipped_duplicate = 0
+            self.urls_by_depth.clear()
             
         self.logger.info("URL queue cleared")
     

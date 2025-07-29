@@ -52,8 +52,9 @@ class HeadingsParser(ParserMixin):
             self.log_parsing_stats('HeadingsParser', len(data), errors)
             
         except Exception as e:
-            self.logger.error(f"Erro no parse de headings: {e}")
-            data['headings_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro no parse de headings: {error_msg}")
+            data['headings_parse_error'] = str(e).encode('utf-8', errors='replace').decode('utf-8')
             self.log_parsing_stats('HeadingsParser', len(data), 1)
         
         return data

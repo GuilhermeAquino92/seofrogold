@@ -91,7 +91,8 @@ class ResultSaver:
             self.logger.info(f"Successfully saved {buffer_size} results. Total: {self.total_saved}")
             
         except Exception as e:
-            self.logger.error(f"Error flushing buffer: {e}")
+            safe_error = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Error flushing buffer: {safe_error}")
             raise
     
     async def _save_csv_batch(self):
@@ -103,9 +104,15 @@ class ResultSaver:
             with open(self.main_file, 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 for result in self.buffer:
+                    # Sanitização automática de campos string
+                    safe_title = self._sanitize_field(result.title)
+                    safe_meta_desc = self._sanitize_field(result.meta_description)
+                    safe_errors = '; '.join(result.errors) if result.errors else ''
+                    safe_errors = self._sanitize_field(safe_errors)
+                    
                     row = [
                         result.url, result.status_code, result.final_url,
-                        result.title, result.meta_description,
+                        safe_title, safe_meta_desc,
                         result.h1_count, result.h2_count,
                         result.internal_links, result.external_links,
                         result.images_count, result.page_size, result.load_time,
@@ -113,7 +120,7 @@ class ResultSaver:
                         result.redirect_info.get('type', ''),
                         result.redirect_info.get('is_clean', False),
                         result.redirect_info.get('is_external', False),
-                        '; '.join(result.errors) if result.errors else ''
+                        safe_errors
                     ]
                     writer.writerow(row)
         
@@ -130,7 +137,10 @@ class ResultSaver:
                     if self.total_saved > 0 or i > 0:
                         f.write(',\n')
                     
-                    json.dump(result.to_dict(), f, ensure_ascii=False, indent=2)
+                    # Sanitiza dados antes de salvar como JSON
+                    result_dict = result.to_dict()
+                    sanitized_dict = self._sanitize_dict_fields(result_dict)
+                    json.dump(sanitized_dict, f, ensure_ascii=False, indent=2)
         
         await loop.run_in_executor(None, write_batch)
     
@@ -198,8 +208,41 @@ class ResultSaver:
             self.logger.warning("pandas or openpyxl not available - Excel export skipped")
             return ""
         except Exception as e:
-            self.logger.error(f"Error exporting to Excel: {e}")
+            safe_error = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Error exporting to Excel: {safe_error}")
             raise
+    
+    def _sanitize_field(self, field) -> str:
+        """
+        Sanitiza campo string para prevenir problemas de encoding
+        Aplicação da melhoria sugerida em implementar.txt
+        """
+        if field is None:
+            return ''
+        try:
+            return str(field).encode('utf-8', errors='replace').decode('utf-8')
+        except Exception:
+            return str(field) if field else ''
+    
+    def _sanitize_dict_fields(self, data: Dict) -> Dict:
+        """
+        Sanitiza todos os campos string de um dicionário recursivamente
+        """
+        if not isinstance(data, dict):
+            return data
+        
+        sanitized = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                sanitized[key] = self._sanitize_field(value)
+            elif isinstance(value, dict):
+                sanitized[key] = self._sanitize_dict_fields(value)
+            elif isinstance(value, list):
+                sanitized[key] = [self._sanitize_field(item) if isinstance(item, str) else item for item in value]
+            else:
+                sanitized[key] = value
+        
+        return sanitized
     
     def __len__(self) -> int:
         """Retorna total de resultados salvos + buffer"""

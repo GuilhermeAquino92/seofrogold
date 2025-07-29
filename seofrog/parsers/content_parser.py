@@ -71,8 +71,9 @@ class ContentParser(ParserMixin):
             self.log_parsing_stats('ContentParser', len(data), errors)
             
         except Exception as e:
-            self.logger.error(f"Erro no parse de conteúdo: {e}")
-            data['content_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro no parse de conteúdo: {error_msg}")
+            data['content_parse_error'] = str(e).encode('utf-8', errors='replace').decode('utf-8')
             self.log_parsing_stats('ContentParser', len(data), 1)
         
         return data
@@ -88,7 +89,11 @@ class ContentParser(ParserMixin):
             BeautifulSoup com conteúdo limpo para análise
         """
         # Cria cópia para não modificar o original
-        clean_soup = BeautifulSoup(str(soup), 'lxml')
+        try:
+            clean_html = str(soup).encode('utf-8', errors='replace').decode('utf-8')
+            clean_soup = BeautifulSoup(clean_html, 'lxml')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            clean_soup = BeautifulSoup(soup.get_text(), 'lxml')
         
         # Remove tags que não são conteúdo principal
         for tag_name in self.excluded_tags:

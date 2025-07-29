@@ -75,8 +75,8 @@ class RobustSitemapHandler:
                                    f"({sitemap_info['content_type']}, "
                                    f"{sitemap_info['size_kb']}KB)")
                     
-                    # Para sitemap_index, processa apenas o primeiro encontrado
-                    if 'index' in sitemap_url.lower():
+                    # Para sitemap_index bem-sucedido, processa apenas o primeiro encontrado
+                    if 'index' in sitemap_url.lower() and sitemap_info['accessible']:
                         break
                         
             except Exception as e:
@@ -115,7 +115,13 @@ class RobustSitemapHandler:
         
         try:
             if self.http_engine:
-                response, _, _ = self.http_engine.fetch_url(sitemap_url)
+                import asyncio
+                if asyncio.iscoroutinefunction(self.http_engine.fetch_url):
+                    # HTTP Engine é assíncrono, usa requests como fallback
+                    response = requests.get(sitemap_url, timeout=self.timeout, 
+                                          allow_redirects=True, stream=True)
+                else:
+                    response, _, _ = self.http_engine.fetch_url(sitemap_url)
             else:
                 response = requests.get(sitemap_url, timeout=self.timeout, 
                                       allow_redirects=True, stream=True)
@@ -152,7 +158,12 @@ class RobustSitemapHandler:
             robots_url = f"https://{self.domain}/robots.txt"
             
             if self.http_engine:
-                response, _, _ = self.http_engine.fetch_url(robots_url)
+                import asyncio
+                if asyncio.iscoroutinefunction(self.http_engine.fetch_url):
+                    # HTTP Engine é assíncrono, usa requests como fallback
+                    response = requests.get(robots_url, timeout=self.timeout)
+                else:
+                    response, _, _ = self.http_engine.fetch_url(robots_url)
             else:
                 response = requests.get(robots_url, timeout=self.timeout)
             
@@ -215,13 +226,27 @@ class RobustSitemapHandler:
             # 2. Processamento do conteúdo
             content = self._process_sitemap_content(response, result['stats'])
             if not content:
-                result['error'] = "Falha no processamento do conteúdo"
+                # Se o response existe mas content é None, provavelmente é HTML
+                if response and response.text and ('<!doctype html' in response.text.lower()[:500] or '<html' in response.text.lower()[:500]):
+                    result['error'] = "URL retornou HTML em vez de XML sitemap (sitemap não existe ou redirecionamento)"
+                    self.logger.info(f"Sitemap {sitemap_url} retornou HTML - sitemap não existe")
+                else:
+                    result['error'] = "Falha no processamento do conteúdo"
                 return result
             
             # 3. Tentativas de parsing com diferentes estratégias
             parsed_data = self._parse_xml_with_fallbacks(content, result['stats'])
             if not parsed_data:
-                result['error'] = "Falha no parsing XML com todas as estratégias"
+                content_preview = content[:200] if content else "empty content"
+                safe_preview = content_preview.encode('utf-8', errors='replace').decode('utf-8')
+                
+                # Detecta se o conteúdo é HTML em vez de XML
+                if content and content.strip().lower().startswith('<!doctype html') or '<html' in content.lower()[:500]:
+                    result['error'] = f"URL retornou HTML em vez de XML sitemap (possivelmente inexistente ou redirecionado)"
+                    self.logger.info(f"Sitemap {sitemap_url} retornou HTML - sitemap não existe ou foi redirecionado")
+                else:
+                    result['error'] = f"Falha no parsing XML com todas as estratégias. Content preview: {safe_preview}"
+                    self.logger.warning(f"XML parsing failed for {sitemap_url}. Content size: {len(content) if content else 0}")
                 return result
             
             # 4. Extração de URLs e sub-sitemaps
@@ -267,7 +292,18 @@ class RobustSitemapHandler:
         """
         try:
             if self.http_engine:
-                response, _, _ = self.http_engine.fetch_url(sitemap_url)
+                import asyncio
+                if asyncio.iscoroutinefunction(self.http_engine.fetch_url):
+                    # HTTP Engine é assíncrono, usa requests como fallback
+                    headers = {
+                        'User-Agent': 'SEOFrog/1.0 (+https://seofrog.com/bot)',
+                        'Accept': 'application/xml,text/xml,*/*',
+                        'Accept-Encoding': 'gzip, deflate'
+                    }
+                    response = requests.get(sitemap_url, timeout=self.timeout, 
+                                          headers=headers, allow_redirects=True)
+                else:
+                    response, _, _ = self.http_engine.fetch_url(sitemap_url)
             else:
                 headers = {
                     'User-Agent': 'SEOFrog/1.0 (+https://seofrog.com/bot)',
@@ -313,7 +349,12 @@ class RobustSitemapHandler:
                 content_str = content.decode('utf-8', errors='replace')
                 stats['encoding_detected'] = 'utf-8 (fallback)'
             
-            # 4. Limpeza de caracteres inválidos
+            # 4. Detecção precoce de HTML (antes da limpeza XML)
+            if content_str.strip().lower().startswith('<!doctype html') or '<html' in content_str.lower()[:500]:
+                self.logger.debug("Conteúdo detectado como HTML em vez de XML sitemap")
+                return None  # Retorna None para trigger o erro de parsing
+            
+            # 5. Limpeza de caracteres inválidos
             original_length = len(content_str)
             content_str = self._clean_xml_content(content_str)
             
@@ -393,7 +434,8 @@ class RobustSitemapHandler:
                     self.logger.debug(f"XML parseado com estratégia: {strategy_name}")
                     return result
             except Exception as e:
-                self.logger.debug(f"Estratégia {strategy_name} falhou: {e}")
+                safe_error = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                self.logger.debug(f"Estratégia {strategy_name} falhou: {safe_error}")
                 continue
         
         return None

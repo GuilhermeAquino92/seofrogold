@@ -51,8 +51,9 @@ class MetaParser(ParserMixin):
             self.log_parsing_stats('MetaParser', len(data), errors)
             
         except Exception as e:
-            self.logger.error(f"Erro no parse de meta elements: {e}")
-            data['meta_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro no parse de meta elements: {error_msg}")
+            data['meta_parse_error'] = str(e).encode('utf-8', errors='replace').decode('utf-8')
             self.log_parsing_stats('MetaParser', len(data), 1)
         
         return data

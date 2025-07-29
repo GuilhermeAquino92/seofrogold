@@ -90,8 +90,9 @@ class SchemaParser(ParserMixin):
             self.log_parsing_stats('SchemaParser', len(data), errors)
             
         except Exception as e:
-            self.logger.error(f"Erro no parse de schema: {e}")
-            data['schema_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro no parse de schema: {error_msg}")
+            data['schema_parse_error'] = str(e).encode('utf-8', errors='replace').decode('utf-8')
             self.log_parsing_stats('SchemaParser', len(data), 1)
         
         return data

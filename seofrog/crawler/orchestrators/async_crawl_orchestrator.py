@@ -12,8 +12,11 @@ import logging
 from ..engines.async_http_engine import AsyncHTTPEngine
 from ..queues.url_queue import URLQueue
 from ..savers.result_saver import ResultSaver
-from ..parsers.simple_page_parser import SimplePageParser
+from ..parsers.modular_page_parser import ModularPageParser
 from ..models.crawl_result import CrawlResult
+from ...core.sitemap_handler import SitemapHandler
+from ..handlers.async_robots_handler import AsyncRobotsHandler
+from ..utils.redirect_classifier import classify_redirect_type, analyze_redirect_chain, get_seo_redirect_recommendations
 
 
 class AsyncCrawlOrchestrator:
@@ -23,13 +26,14 @@ class AsyncCrawlOrchestrator:
     """
     
     def __init__(self, config, output_dir: str = "./crawl_output", 
-                 max_workers: int = 10, max_depth: int = 3, max_urls: int = 1000):
+                 max_workers: int = 20, max_depth: int = 6, max_urls: int = 20000):
         
         # Core components
         self.http_engine = AsyncHTTPEngine(config)
         self.url_queue = URLQueue(max_depth=max_depth, max_urls=max_urls)
         self.result_saver = ResultSaver(output_dir)
-        self.page_parser = SimplePageParser()
+        self.page_parser = ModularPageParser()
+        self.robots_handler = AsyncRobotsHandler(getattr(config, 'user_agent', 'SEOFrog/0.4 AsyncCrawler'))
         
         # Configuration
         self.max_workers = max_workers
@@ -55,6 +59,9 @@ class AsyncCrawlOrchestrator:
         self.stats['start_time'] = datetime.now().isoformat()
         self.running = True
         
+        # Descoberta e adição de URLs do sitemap antes da URL inicial
+        await self._discover_and_add_sitemap_urls(start_url)
+        
         # Adiciona URL inicial
         await self.url_queue.add_url(start_url, depth=0)
         
@@ -79,19 +86,37 @@ class AsyncCrawlOrchestrator:
         [WORKER] Worker individual para processamento de URLs
         Ciclo: fetch -> parse -> save -> extract links -> repeat
         """
+        consecutive_empty = 0
         while self.running:
             try:
                 # Pega próxima URL
                 url_data = await self.url_queue.get_url()
                 if url_data is None:
-                    # Timeout ou fila vazia
-                    if await self.url_queue.is_empty():
-                        self.logger.debug(f"{worker_name}: Queue empty, stopping")
-                        break
+                    consecutive_empty += 1
+                    # Give more time for dynamic URL discovery
+                    if consecutive_empty > 10:  # Increased patience
+                        if await self.url_queue.is_empty():
+                            # Final check - wait longer for potential new URLs
+                            await asyncio.sleep(2.0)
+                            if await self.url_queue.is_empty():
+                                self.logger.debug(f"{worker_name}: Queue consistently empty after extended wait, stopping")
+                                break
+                        # Progressive backoff but with longer max wait
+                        await asyncio.sleep(min(consecutive_empty * 0.3, 3.0))
+                    else:
+                        # Shorter initial delays to be more responsive
+                        await asyncio.sleep(0.1)
                     continue
+                else:
+                    consecutive_empty = 0  # Reset contador
                 
                 url, depth = url_data
                 self.logger.debug(f"{worker_name}: Processing {url} (depth {depth})")
+                
+                # Verifica robots.txt antes do fetch
+                if not await self.robots_handler.can_fetch(url, self.http_engine.session):
+                    self.logger.debug(f"{worker_name}: URL blocked by robots.txt: {url}")
+                    continue
                 
                 # Fetch da página
                 start_time = time.time()
@@ -99,9 +124,20 @@ class AsyncCrawlOrchestrator:
                 load_time = time.time() - start_time
                 
                 if response:
-                    # Parse da resposta
-                    result = self.page_parser.parse_response(response, url, depth)
+                    # Parse da resposta usando parsers modulares
+                    result = await self.page_parser.parse_response_async(response, url, depth)
                     result.load_time = load_time
+                    
+                    # Analisa redirects se houver
+                    if redirect_chain:
+                        redirect_analysis = analyze_redirect_chain(url, redirect_chain, str(response.url))
+                        result.redirect_info = {
+                            'type': classify_redirect_type(url, str(response.url)),
+                            'chain_analysis': redirect_analysis,
+                            'seo_recommendations': get_seo_redirect_recommendations(redirect_analysis),
+                            'redirect_count': len(redirect_chain)
+                        }
+                        self.logger.debug(f"Redirect analysis for {url}: {result.redirect_info['type']}")
                     
                     # Salva resultado
                     await self.result_saver.add_result(result)
@@ -136,7 +172,8 @@ class AsyncCrawlOrchestrator:
     
     async def _extract_and_queue_links(self, response, base_url: str, next_depth: int):
         """Extrai links da página e adiciona à fila"""
-        if response.status_code != 200 or not self._is_html_response(response):
+        # Permite extração de links de páginas 3xx (redirects) e 200
+        if response.status_code not in [200, 301, 302, 303, 307, 308] or not self._is_html_response(response):
             return
         
         try:
@@ -147,13 +184,14 @@ class AsyncCrawlOrchestrator:
             final_url = str(response.url)
             base_domain = urlparse(final_url).netloc
             
-            # Extrai todos os links usando regex
-            href_pattern = r'<a[^>]*href=["\']([^"\']*)["\'][^>]*>'
-            hrefs = re.findall(href_pattern, response.text, re.IGNORECASE)
+            # Parse HTML usando BeautifulSoup para extração mais robusta
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, 'lxml')
+            links = soup.find_all('a', href=True)
             
             links_added = 0
-            for href in hrefs:
-                href = href.strip()
+            for link in links:
+                href = link.get('href', '').strip()
                 
                 # Skip certain types of links
                 if not href or href.startswith(('#', 'mailto:', 'tel:', 'javascript:')):
@@ -162,11 +200,14 @@ class AsyncCrawlOrchestrator:
                 # Resolve URL relativa
                 try:
                     absolute_url = urljoin(final_url, href)
+                    parsed_url = urlparse(absolute_url)
                     
                     # Filtra apenas links do mesmo domínio
-                    if urlparse(absolute_url).netloc == base_domain:
-                        if await self.url_queue.add_url(absolute_url, next_depth):
-                            links_added += 1
+                    if parsed_url.netloc == base_domain:
+                        # Verifica se é uma URL crawlable (sem extensões problemáticas)
+                        if self._is_crawlable_url(absolute_url):
+                            if await self.url_queue.add_url(absolute_url, next_depth):
+                                links_added += 1
                             
                 except Exception as e:
                     self.logger.debug(f"Error processing link {href}: {e}")
@@ -183,6 +224,76 @@ class AsyncCrawlOrchestrator:
         content_type = response.headers.get('content-type', '') or response.headers.get('Content-Type', '')
         content_type = content_type.lower()
         return 'text/html' in content_type
+    
+    def _is_crawlable_url(self, url: str) -> bool:
+        """Verifica se URL pode ser crawleada (baseado no crawler antigo)"""
+        try:
+            parsed = urlparse(url)
+            path = parsed.path.lower()
+            
+            # Extensões a ignorar (comuns em crawlers)
+            ignore_extensions = {
+                '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+                '.zip', '.rar', '.tar', '.gz', '.exe', '.dmg', '.pkg',
+                '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico',
+                '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mp3', '.wav', '.ogg',
+                '.css', '.js', '.xml', '.rss', '.json', '.txt'
+            }
+            
+            # Verifica extensão
+            for ext in ignore_extensions:
+                if path.endswith(ext):
+                    return False
+            
+            # URLs com query parameters problemáticas
+            query = parsed.query.lower()
+            if any(param in query for param in ['download=', 'file=', 'attachment=']):
+                return False
+            
+            return True
+            
+        except Exception:
+            return False
+    
+    async def _discover_and_add_sitemap_urls(self, start_url: str):
+        """Descobre e adiciona URLs do sitemap ao queue"""
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(start_url).netloc
+            
+            # Cria handler de sitemap
+            sitemap_handler = SitemapHandler(domain, self.http_engine)
+            
+            # Descobre sitemaps
+            sitemap_urls = sitemap_handler.discover_sitemaps()
+            
+            if not sitemap_urls:
+                self.logger.debug(f"Nenhum sitemap encontrado para {domain}")
+                return
+            
+            # Processa cada sitemap
+            total_sitemap_urls = 0
+            for sitemap_url in sitemap_urls:  # Remove limite de sitemaps
+                try:
+                    urls = sitemap_handler.parse_sitemap(sitemap_url)
+                    
+                    # Adiciona URLs do sitemap com depth 0 (prioridade alta)
+                    for url in urls:  # Remove limite de URLs por sitemap
+                        if await self.url_queue.add_url(url, depth=0):
+                            total_sitemap_urls += 1
+                    
+                    self.logger.info(f"Adicionadas {len(urls)} URLs do sitemap {sitemap_url}")
+                    
+                except Exception as e:
+                    self.logger.warning(f"Erro processando sitemap {sitemap_url}: {e}")
+                    continue
+            
+            if total_sitemap_urls > 0:
+                self.logger.info(f"Total de {total_sitemap_urls} URLs adicionadas dos sitemaps")
+            
+        except Exception as e:
+            self.logger.warning(f"Erro na descoberta de sitemaps: {e}")
+            # Não falha o crawl se sitemaps falharem
     
     async def _shutdown(self):
         """Shutdown graceful do crawler"""

@@ -29,11 +29,53 @@ class CrawlResult:
     redirect_info: Dict = None
     errors: List[str] = None
     
+    # Campos adicionais para compatibilidade com parsers modulares
+    meta_keywords: str = ""
+    canonical_url: str = ""
+    robots_meta: str = ""
+    h1: str = ""
+    headings: List = None
+    charset: str = ""
+    content_type: str = ""
+    server: str = ""
+    response_headers: Dict = None
+    og_data: Dict = None
+    twitter_data: Dict = None
+    schema_org: List = None
+    images: List = None
+    image_count: int = 0
+    security_headers: Dict = None
+    mixed_content: List = None
+    word_count: int = 0
+    text_content: str = ""
+    links_internal: List = None
+    links_external: List = None
+    
     def __post_init__(self):
         if self.errors is None:
             self.errors = []
         if self.redirect_info is None:
             self.redirect_info = {}
+        if self.headings is None:
+            self.headings = []
+        if self.response_headers is None:
+            self.response_headers = {}
+        if self.og_data is None:
+            self.og_data = {}
+        if self.twitter_data is None:
+            self.twitter_data = {}
+        if self.schema_org is None:
+            self.schema_org = []
+        if self.images is None:
+            self.images = []
+        if self.security_headers is None:
+            self.security_headers = {}
+        if self.mixed_content is None:
+            self.mixed_content = []
+        if self.links_internal is None:
+            self.links_internal = []
+        if self.links_external is None:
+            self.links_external = []
     
     def to_dict(self) -> Dict:
         """Converte para dicionário"""

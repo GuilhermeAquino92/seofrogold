@@ -116,8 +116,9 @@ class TechnicalParser(ParserMixin):
             self.log_parsing_stats('TechnicalParser', len(data), errors)
 
         except Exception as e:
-            self.logger.error(f"Erro no parse técnico: {e}")
-            data['technical_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro no parse técnico: {error_msg}")
+            data['technical_parse_error'] = error_msg
             self.log_parsing_stats('TechnicalParser', len(data), 1)
 
         return data
@@ -131,6 +132,9 @@ class TechnicalParser(ParserMixin):
             'redirects_errors': []
         }
 
+        # TEMPORARIAMENTE DESABILITADO para investigar encoding
+        return redirect_data
+        
         if not self.enable_redirect_detection:
             return redirect_data
 
@@ -168,7 +172,7 @@ class TechnicalParser(ParserMixin):
                 except Exception as e:
                     redirect_data['redirects_errors'].append({
                         'url': link_url,
-                        'error': str(e)
+                        'error': str(e).encode('utf-8', errors='replace').decode('utf-8')
                     })
 
             # Estatísticas finais
@@ -185,8 +189,9 @@ class TechnicalParser(ParserMixin):
                 self.logger.info(f"✅ Encontrados {redirect_data['redirects_count']} redirects em {base_url}")
 
         except Exception as e:
-            self.logger.error(f"Erro na detecção de redirects: {e}")
-            redirect_data['redirects_errors'].append({'error': str(e)})
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro na detecção de redirects: {error_msg}")
+            redirect_data['redirects_errors'].append({'error': error_msg})
 
         return redirect_data
 
@@ -240,7 +245,7 @@ class TechnicalParser(ParserMixin):
 
         except requests.RequestException as e:
             self.logger.debug(f"Erro verificando redirect {url}: {e}")
-            redirect_info['error'] = str(e)
+            redirect_info['error'] = str(e).encode('utf-8', errors='replace').decode('utf-8')
 
         return redirect_info
 

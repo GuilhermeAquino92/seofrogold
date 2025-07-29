@@ -101,8 +101,9 @@ class SocialParser(ParserMixin):
             self.log_parsing_stats('SocialParser', len(data), errors)
             
         except Exception as e:
-            self.logger.error(f"Erro no parse de social media: {e}")
-            data['social_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro no parse de social media: {error_msg}")
+            data['social_parse_error'] = str(e).encode('utf-8', errors='replace').decode('utf-8')
             self.log_parsing_stats('SocialParser', len(data), 1)
         
         return data

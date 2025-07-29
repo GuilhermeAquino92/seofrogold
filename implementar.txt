@@ -1,0 +1,97 @@
+Claro. Abaixo está uma explicação técnica completa do problema, com diagnóstico detalhado e checklist para o desenvolvedor revisar no SEOFrog `v0.3` assíncrono:
+
+---
+
+## 🧠 **Diagnóstico Técnico – SEOFrog rastreando menos que Screaming Frog**
+
+### 🔍 Problema:
+
+O SEOFrog (async) está capturando **\~2500 URLs**, enquanto o Screaming Frog captura **\~2700**, com **915 URLs não rastreadas**.
+
+### 📉 Causa provável:
+
+URLs **com profundidade ≥ 2** estão sendo **descartadas ou não adicionadas** corretamente na fila (`URLQueue`).
+A análise mostra:
+
+* Profundidade média das URLs perdidas: **1.87**
+* 50% das URLs perdidas estão em profundidade **≥ 2**
+* Máxima: **6 níveis**
+
+---
+
+## ⚠️ **Hipóteses técnicas a investigar:**
+
+### 1. `URLQueue.add_url()` está descartando URLs por profundidade?
+
+✅ Verificar se há filtro manual como:
+
+```python
+if depth > max_depth:
+    return  # ou não adiciona
+```
+
+📌 Ideal: permitir **adição de URLs até o limite `max_depth` real**, não cortar antecipadamente.
+
+---
+
+### 2. `get_next_url()` não está alimentando rápido o suficiente
+
+⚠️ Sintoma: o SEOFrog pode parar prematuramente se a fila for esvaziada antes de novas URLs entrarem.
+
+📌 Garantir que:
+
+* `add_url()` é chamado logo após parsing (não só em batch)
+* A fila nunca bloqueia por `Semaphore` mal configurado
+* A estratégia de "descoberta → enfileiramento" seja **dinâmica**
+
+---
+
+### 3. Parsers (ex: `ModularPageParser`) estão falhando ao extrair links
+
+✅ Verificar:
+
+* O parser está encontrando `<a href=...>` dentro do HTML completo?
+* Algum `try/except` está suprimindo links silenciosamente?
+* O HTML recebido está completo ou cortado?
+
+🔧 Sugestão:
+
+* Logar quantos links foram extraídos por página
+* Checar se todos os links passam pela normalização e validação (evitar bloqueio de links válidos)
+
+---
+
+### 4. Filtro de sitemap limitado (sitemap discovery ou URL cap)
+
+⚠️ Se o SEOFrog estiver lendo sitemaps com limite de 1000 URLs por `xml`, enquanto o Screaming Frog processa até 10.000, isso afeta significativamente a cobertura.
+
+📌 Verificar no `robots_handler` ou `sitemap_parser` se há:
+
+```python
+if len(sitemap_urls) > 1000:
+    sitemap_urls = sitemap_urls[:1000]
+```
+
+✅ Ideal: **permitir leitura completa** ou configurar limite via profile (`config.max_sitemap_urls_per_xml`)
+
+---
+
+### ✅ Check de qualidade: o que o dev deve confirmar
+
+| Item             | Verificar                              | Ação recomendada                           |
+| ---------------- | -------------------------------------- | ------------------------------------------ |
+| `max_depth`      | Está sendo respeitado até o final?     | Permitir `depth <= max_depth`              |
+| `add_url()`      | Está rejeitando profundidades maiores? | Remover bloqueios conservadores            |
+| `get_next_url()` | Está alimentando de forma contínua?    | Implementar feeding dinâmico e progressivo |
+| Link Parser      | Está extraindo todos os `<a>` válidos? | Logar quantidade por página                |
+| Sitemap          | Está limitado a 1000 URLs?             | Subir limite ou remover truncamento        |
+| Robots.txt       | Está bloqueando páginas internas?      | Habilitar bypass para teste                |
+| Stats            | Está logando URLs por profundidade?    | Adicionar métrica para debugging           |
+
+---
+
+### 🚀 Resultado Esperado:
+
+Com esses ajustes, o SEOFrog deve atingir **níveis de rastreamento comparáveis ao Screaming Frog**, mesmo em sites mais profundos, sem necessidade de fallback híbrido (sync + async).
+
+Se quiser, posso aplicar o patch diretamente nos módulos `url_queue.py`, `async_crawl_orchestrator.py` e `modular_page_parser.py` agora. Deseja que eu faça?

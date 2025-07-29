@@ -58,41 +58,85 @@ class ImagesParser(ParserMixin):
         try:
             # Parse básico de todas as imagens
             images = self._find_all_images(soup)
-            self._analyze_basic_image_metrics(images, data)
+            
+            try:
+                self._analyze_basic_image_metrics(images, data)
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _analyze_basic_image_metrics")
+                raise
             
             # Análise detalhada de cada imagem
-            image_details = self._analyze_individual_images(images, soup)
-            data['images_details'] = image_details
+            try:
+                image_details = self._analyze_individual_images(images, soup)
+                data['images_details'] = image_details
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _analyze_individual_images")
+                raise
             
             # Análise de problemas de ALT text
-            self._analyze_alt_text_issues(image_details, data)
+            try:
+                self._analyze_alt_text_issues(image_details, data)
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _analyze_alt_text_issues")
+                raise
             
             # Análise de problemas de SRC
-            self._analyze_src_issues(image_details, data)
+            try:
+                self._analyze_src_issues(image_details, data)
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _analyze_src_issues")
+                raise
             
             # Análise de dimensões e atributos
-            self._analyze_dimensions_and_attributes(image_details, data)
+            try:
+                self._analyze_dimensions_and_attributes(image_details, data)
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _analyze_dimensions_and_attributes")
+                raise
             
             # Análise de lazy loading
-            self._analyze_lazy_loading(image_details, data)
+            try:
+                self._analyze_lazy_loading(image_details, data)
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _analyze_lazy_loading")
+                raise
             
             # Análise de densidade de imagens (se word_count disponível)
             if word_count:
-                self._analyze_image_density(data, word_count)
+                try:
+                    self._analyze_image_density(data, word_count)
+                except ZeroDivisionError:
+                    self.logger.error("Division by zero in _analyze_image_density")
+                    raise
             
             # Detecção de problemas gerais
-            self._detect_image_issues(data)
+            try:
+                self._detect_image_issues(data)
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _detect_image_issues")
+                raise
             
             # Severity scoring
-            self._calculate_images_severity(data)
+            try:
+                self._calculate_images_severity(data)
+            except ZeroDivisionError:
+                self.logger.error("Division by zero in _calculate_images_severity")
+                raise
             
             # Log estatísticas
             errors = 1 if any(key.endswith('_error') for key in data.keys()) else 0
             self.log_parsing_stats('ImagesParser', len(data), errors)
             
         except Exception as e:
-            self.logger.error(f"Erro no parse de imagens: {e}")
-            data['images_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            # Special logging for division by zero to help debug
+            if 'division by zero' in error_msg.lower():
+                self.logger.error(f"DIVISION BY ZERO in ImagesParser - word_count: {word_count}, error: {error_msg}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+            else:
+                self.logger.error(f"Erro no parse de imagens: {error_msg}")
+            data['images_parse_error'] = error_msg
             self.log_parsing_stats('ImagesParser', len(data), 1)
         
         return data
@@ -183,7 +227,7 @@ class ImagesParser(ParserMixin):
         for i, img in enumerate(images):
             detail = {
                 'index': i + 1,
-                'tag_html': str(img)[:200],  # Primeiros 200 chars da tag
+                'tag_html': str(img).encode('utf-8', errors='replace').decode('utf-8')[:200],  # Primeiros 200 chars da tag
             }
             
             # Atributos básicos
@@ -471,7 +515,7 @@ class ImagesParser(ParserMixin):
         data['images_large_count'] = large_images
         data['images_small_count'] = small_images
         data['images_modern_format_count'] = modern_formats
-        data['images_modern_format_percentage'] = (modern_formats / len(image_details) * 100) if image_details else 0
+        data['images_modern_format_percentage'] = (modern_formats / len(image_details) * 100) if image_details and len(image_details) > 0 else 0
     
     def _analyze_lazy_loading(self, image_details: List[Dict], data: Dict):
         """
@@ -529,9 +573,11 @@ class ImagesParser(ParserMixin):
             issues.append('densidade_imagens_alta')
         
         # Muitas imagens grandes
-        large_percentage = (data.get('images_large_count', 0) / data.get('images_count', 1)) * 100
-        if large_percentage > 50:
-            issues.append('muitas_imagens_grandes')
+        images_count = data.get('images_count', 0)
+        if images_count > 0:
+            large_percentage = (data.get('images_large_count', 0) / images_count) * 100
+            if large_percentage > 50:
+                issues.append('muitas_imagens_grandes')
         
         # Poucos formatos modernos
         modern_percentage = data.get('images_modern_format_percentage', 0)
@@ -709,7 +755,7 @@ class ImagesParser(ParserMixin):
             validations['no_critical_issues']
         ]
         
-        validations['images_best_practices_score'] = int((sum(score_items) / len(score_items)) * 100)
+        validations['images_best_practices_score'] = int((sum(score_items) / len(score_items)) * 100) if score_items else 0
         
         return validations
     

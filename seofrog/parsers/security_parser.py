@@ -131,8 +131,9 @@ class SecurityParser(ParserMixin):
             self.log_parsing_stats('SecurityParser', len(data), errors)
             
         except Exception as e:
-            self.logger.error(f"Erro no parse de segurança: {e}")
-            data['security_parse_error'] = str(e)
+            error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+            self.logger.error(f"Erro no parse de segurança: {error_msg}")
+            data['security_parse_error'] = error_msg
             self.log_parsing_stats('SecurityParser', len(data), 1)
         
         return data
@@ -182,7 +183,7 @@ class SecurityParser(ParserMixin):
                             'tag': tag_name,
                             'attribute': attr,
                             'url': resource_url,
-                            'element_html': str(element)[:200]
+                            'element_html': str(element).encode('utf-8', errors='replace').decode('utf-8')[:200]
                         }
                         
                         # Se página é HTTPS → Mixed Content verdadeiro
@@ -210,7 +211,7 @@ class SecurityParser(ParserMixin):
                     'tag': element.name,
                     'attribute': 'style',
                     'url': http_url,
-                    'element_html': str(element)[:200]
+                    'element_html': str(element).encode('utf-8', errors='replace').decode('utf-8')[:200]
                 }
                 
                 # Se página HTTPS → conta como Mixed Content
@@ -331,7 +332,10 @@ class SecurityParser(ParserMixin):
         """
         Analisa padrões de vulnerabilidades no HTML
         """
-        page_html = str(soup)
+        try:
+            page_html = str(soup).encode('utf-8', errors='replace').decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            page_html = soup.get_text()
         vulnerability_results = {}
         total_vulnerabilities = 0
         high_risk_count = 0
@@ -384,7 +388,7 @@ class SecurityParser(ParserMixin):
                     'url': src,
                     'has_integrity': has_integrity,
                     'has_crossorigin': has_crossorigin,
-                    'element_html': str(script)[:200]
+                    'element_html': str(script).encode('utf-8', errors='replace').decode('utf-8')[:200]
                 })
                 external_resources.append({
                     'type': 'script',
@@ -404,7 +408,7 @@ class SecurityParser(ParserMixin):
                     'rel': link.get('rel', []),
                     'has_integrity': has_integrity,
                     'has_crossorigin': has_crossorigin,
-                    'element_html': str(link)[:200]
+                    'element_html': str(link).encode('utf-8', errors='replace').decode('utf-8')[:200]
                 })
                 external_resources.append({
                     'type': 'link',
@@ -483,7 +487,10 @@ class SecurityParser(ParserMixin):
             r'getCookie\('
         ]
         
-        page_html = str(soup)
+        try:
+            page_html = str(soup).encode('utf-8', errors='replace').decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            page_html = soup.get_text()
         cookie_usage = {}
         
         for pattern in cookie_usage_patterns:
